@@ -1,9 +1,9 @@
 #-------------------------------------------------------------------------------------------------------------------------------------
-#File Name 		   : Attendance_System.py 
+#File Name 		   : Attendance_System.py
 #Author(s) 		   : Pratik Panchal
-#Purpose of module : Attendance system provide some features like Record Video when door will open,
-# 					 process on video and video will upload on server. 
-#Date of creation  : 22/11/2018
+#Purpose of module : Attendance system provide some features like capture image when door will open,
+# 					 process on image and image will upload on server. 
+#Date of creation  : 16/11/2018
 #-------------------------------------------------------------------------------------------------------------------------------------
 import json
 import csv
@@ -13,7 +13,6 @@ import wiringpi # wiringpi module import for GPIO
 import time     # time library module import
 from StringIO import StringIO
 from datetime import datetime 
-from subprocess import check_output
 from picamera import PiCamera # pi camera function use from picamera module
 from time import sleep 		  # sleep function use from time library module      
 global giFlag 				  # globally define flag
@@ -27,25 +26,28 @@ giCount=0
 global giTimeCount
 giTimeCount=0
 
-global gfDurationBuf
-gfDurationBuf = 0
+global giLooper
+giLooper = 0 
 
-global giVidCount
-giVidCount = 0
+global count # testing
+count = 0  # testing
 
 abs_path = os.getcwd()
 abs_path = abs_path+'/'
 
-url = "http://192.168.0.4:9128/upload"
+url = "http://192.168.0.4:3000/upload"
 DEFINE_INTERATION = 3 # Interation for Server busy status and Time out Status 
 ENTRY_IMAGES = 7 # Door open then 5 images will capture and send on server 
 READ_SWITCH = 23 # Reed_switch GPIO use 23 
+LOG_PATH1 = "Test_Log"  # Log directory generation path
+IMG_PATH1 = 'image.jpg' # Capture Image file create in path
+LOG_FILE_PATH1 = "Test_Log/log.csv"
 
-LOG_PATH = abs_path+"Test_Log" # Log directory generation path
-MP4_PATH = abs_path+"outfile.mp4" # Output .mp4 file generation path
-LOG_FILE_PATH = abs_path+"Test_Log/log.csv" #log.csv file generation path
-RAW_FILE_PATH = abs_path+'video.h264' # Raw .h264 file generation path
 
+
+LOG_PATH = abs_path+LOG_PATH1
+IMG_PATH = abs_path+IMG_PATH1 
+LOG_FILE_PATH = abs_path+LOG_FILE_PATH1 
 # define user-defined exceptions for Server Busy
 class Error(Exception):
    """Base class for other exceptions"""
@@ -56,73 +58,46 @@ class ServerBusyError(Error):
    pass
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: LogFileGeneration
+# @Function 	: Log_File_Generation
 # @ Parameter 	: void
 # @ Return 		: void
 # @ Brief 		: This Function is Genrate Log data file
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def LogFileGeneration():
+def Log_File_Generation():
 	global gOut
 	os.system('rm -rf Test_Log') # Old Test_Log directory remove when System will restart 
 	os.mkdir( LOG_PATH, 0755 )  # New Test_Log directory generate
 	gOut = csv.writer(open(LOG_FILE_PATH,"w"), delimiter=',' , quoting=csv.QUOTE_ALL) #log.csv file generate in Test_Log directory 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Setup
+# @Function 	: setup
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is initialize GPIO ,Camera , Log data file
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def Setup():
+def setup():
 	global gCamera
 	global giFlag 
 	giFlag = 1
-	LogFileGeneration()
+	Log_File_Generation()
 	gOut.writerow([('Setup Function Intialize_%s' %(str(datetime.now())))])
 	wiringpi.wiringPiSetupGpio()  
 	wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction     
 	wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
-	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, DoorEvent) # Interrupt ISR init by using Edge triggering in Rising edge 
+	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, Door_event) # Interrupt ISR init by using Edge triggering in Rising edge 
 	#gOut.writerow(['GPIO Init','Sucess']) 
 	gCamera = PiCamera() # camera return : <picamera.camera.PiCamera object at 0x75a382a0>
 	#gOut.writerow(['Camera Init','Sucess'])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: VideoTimeDuration
-# @ Parameter   : void
-# @ Return      : void
-# @ Brief       : This Function give time duration of Video
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def VideoTimeDuration():
-
-	ucVideoDuration = str(check_output('ffprobe -i  "'+ MP4_PATH +'" 2>&1 |grep "Duration"',shell=True)) 
-
-	ucVideoDuration = ucVideoDuration.split(",")[0].split("Duration:")[1].strip()
-
-	h, m, s = ucVideoDuration.split(':')
-	gfDurationBuf = int(h) * 3600 + int(m) * 60 + float(s)
-
-	print(gfDurationBuf)
-	gOut.writerow([('Time Duration_%s' %(str(datetime.now()))),gfDurationBuf])
-
-	if gfDurationBuf <= 1.0:
-		os.system('rm -rf VID_%d.mp4' %giVidCount)
-		gOut.writerow([('Discard Video_%s' %(str(datetime.now()))),'VID_%d.mp4' %giVidCount])
-	    os.system('rm -rf outfile.mp4 video.h264')
-	else:
-		SendData()
-		os.system('rm -rf outfile.mp4 video.h264')
-		gOut.writerow([('Store Video_%s' %(str(datetime.now()))),'VID_%d.mp4' %giVidCount])
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: SendData
+# @Function 	: Send_data
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Sending Form data on server 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def SendData(): 
+def Send_data(): 
 	global giCount
 	global giTimeCount
 	global giFlag
+	global count # testing
 	ucStorage = StringIO() 	#setup a "ucStorage" buffer in the form of a StringIO object 
 	c = pycurl.Curl() 		#Create pycurl instance 
 	c.setopt(c.URL, url) 	# URL
@@ -130,7 +105,7 @@ def SendData():
 	c.setopt(c.POST, 1)  # 1 - URL query parameters
 	#testing
 	#~~~~~~~~~~~~~~~~~~~~
-	send = [("file", (c.FORM_FILE, MP4_PATH)),("timestamp",str(datetime.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
+	send = [("file", (c.FORM_FILE, "outfile.mp4" )),("timestamp",str(datetime.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
 	#~~~~~~~~~~~~~~~~~~~~
 
 	c.setopt(c.HTTPPOST,send) 		   # POST "form data" on server
@@ -189,60 +164,55 @@ def SendData():
 giFlag = 0
 					 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: CaptureVideo
+# @Function 	: capture_image
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Capturing Video 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		 
-def CaptureVideo():		
-			global giFlag
-			global giVidCount
+def capture_Video():
+			global count		
+			global gFlag
 			gCamera.annotate_text = "Rydot infotech Attendance System"
 			gCamera.brightness = 70
 			gCamera.resolution = (1024, 768) 
 			gCamera.framerate = 30
 			gOut.writerow(['Video_Record_Start_%s' %(str(datetime.now()))])
-			gCamera.start_recording(RAW_FILE_PATH)
+			gCamera.start_recording(abs_path+'video.h264')
 			gOut.writerow(['Raw .h264 file generated_%s' %(str(datetime.now()))])	
-
 			while wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1:  
 					gCamera.wait_recording()
-					#time.sleep(1)
 					print ('Recording wait')
 						
 			gCamera.stop_recording()
 			gOut.writerow(['Video_Record_Stop_%s' %(str(datetime.now()))])	
-			os.system('MP4Box -fps 30 -add video.h264 outfile.mp4')
-			os.system('cp outfile.mp4 VID_%d.mp4' %giVidCount)
+			os.system('MP4Box -fps 90 -add video.h264 outfile.mp4')
 			gOut.writerow(['MP4 file generated_%s' %(str(datetime.now()))])	
-			VideoTimeDuration()
-			giVidCount += 1
-			
 			
 	
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: DoorEvent
+# @Function 	: Door_event
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Interrupt Service Routine
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def DoorEvent():
+def Door_event():
 	global giFlag
 	giFlag = 1
 	gOut.writerow([('In Interrupt_%s' %(str(datetime.now()))),'Door Event Init'])
 	print ('In ISR')
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Loop
+# @Function 	: loop
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Looping System
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def Loop():
+def loop():
 	while True:  
             
 			print wiringpi.digitalRead(READ_SWITCH)
 			time.sleep(0.2)	
 			global giFlag
+			global giLooper
 			global giCount
 			print ('flag %s' %giFlag)
 			print ('count %s' %giCount)				
@@ -251,13 +221,12 @@ def Loop():
 					gOut.writerow([('Door Position_%s' %(str(datetime.now()))),'Open'])
 					print ('OPEN')
 					#time.sleep(0.2)	
-					CaptureVideo()
-					
+					capture_Video()
+					Send_data()
 					#giFlag = 0
 			else:
 				print ('CLOSE')
-				#os.system('rm -rf outfile.mp4 video.h264')
-
+				os.system('rm -rf outfile.mp4 video.h264')
 			#	gOut.writerow([('Door Position_%s' %(str(datetime.now()))),'Close'])
 			#	giFlag = 0
 			
@@ -269,10 +238,10 @@ def Loop():
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 if __name__ == '__main__':
 		
-		Setup()
+		setup()
 		
 		try:
-				Loop()
+				loop()
 				
 		except KeyboardInterrupt:
 			    print 'keyboard interrupt detected'
