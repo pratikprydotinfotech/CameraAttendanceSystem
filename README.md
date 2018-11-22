@@ -6,7 +6,7 @@ Documentation :
 
 Pi3CAM features :
 
-	gCamera.annotate_text = "Rydot infotech Attendance System"
+	gCamera.annotate_text = "Hello"
 
 	gCamera.brightness = 70
 
