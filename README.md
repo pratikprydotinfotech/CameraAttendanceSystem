@@ -33,7 +33,8 @@ Here we are use for file conversion from Raw .h264 file to .mp4 file.
 $ MP4Box -fps 30 -add video.h264 outfile.mp4'
 ````
 
-**Pi Camera Test Case**
+Pi Camera Test Case
+----
 
 We need to decide fps as per our PiCam decided framerate.
 
@@ -47,6 +48,7 @@ In PiCam Resolution limit is there.
 **Here some test cases of Picam Video :**
 
 Default video Resolution : w-1366 x h-768 
+
 Default video fps : 25 
 
 | Image / Video | Resolution |  Framerate |  Quality |
