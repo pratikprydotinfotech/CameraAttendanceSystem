@@ -1,0 +1,18 @@
+Wifi connection loss :
+~~~~~~~~~~~~~~~~~~~~~
+	
+https://weworkweplay.com/play/rebooting-the-raspberry-pi-when-it-loses-wireless-connection-wifi/
+
+https://www.raspberrypi.org/forums/viewtopic.php?t=107610
+
+command :
+
+https://raspberrypi.stackexchange.com/questions/7857/how-can-i-check-for-internet-connection-before-running-etc-rc-local-script
+
+#!/bin/bash
+ping -q -w 1 -c 1 `ip r | grep default | cut -d ' ' -f 3` > /dev/null && echo ok || echo error
+
+Make it run on boot :
+~~~~~~~~~~~~~~~~~~~~~
+
+https://weworkweplay.com/play/raspberry-pi-nodejs/
