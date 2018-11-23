@@ -46,46 +46,15 @@ In PiCam Resolution limit is there.
 
 **Here some test cases of Picam Video :**
 
-Default video Resolution : w-1366 x h-768 , 
+Default video Resolution : w-1366 x h-768 
 Default video fps : 25 
-  
-**Image / Video**
-**Resolution** 
-**Framerate**
-**Quality**
-Image 
-Max : 2592 x 1944 
-50 
-Excelent
-Image 
-Max : 2592 x 1944 
-60
-Color chnage on screen
-Video 
-2,048 × 1,024
-30
-Stuck camera preview & Pi also.
 
-Issue : The multimedia packager available in GPAC is called MP4Box.
-It can be used for performing many manipulations on multimedia files like AVI, MPG, TS, but mostly on ISO media files (e.g. MP4, 3GP). 
-Video 
-640 x 480
-90
-Bad
-Video
-1024 x 768
-30
-Good (4MB , 5 sec)
-Video 
-1024 x 768 
-90
-Frame rate exceed
-Video 
-1024 x 768 
-50 
-Bad(6MB , 5sec)
-
-
-
-
-
+| Image / Video | Resolution |  Framerate |  Quality |
+| --- | --- | --- | --- |
+| Image  | Max : 2592 x 1944 | 50 | Excelent |
+| Image  | Max : 2592 x 1944 | 60 | Color chnage on screen |
+| Video   | 2,048 × 1,024 | 30 | Stuck camera preview & Pi also |
+| Video   | 640 x 480 | 90 | Bad |
+| Video   | 1024 x 768 | 30 | Good (4MB , 5 sec) |
+| Video   | 1024 x 768 | 90 | Frame rate exceed |
+| Video   | 1024 x 768  | 50 | Bad(6MB , 5sec) |
