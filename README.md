@@ -1,12 +1,13 @@
 ﻿CameraAttendanceSystem
 ======================
 
-#Documentation : 
+##Documentation : 
 
 	CameraAttendanceSystem v1.0.0.
 
 
-#Pi3CAM features :
+##Pi3CAM features :
+
 ````
 	gCamera.annotate_text = "Hello"
 
@@ -17,7 +18,7 @@
 	gCamera.framerate = 30
 ````
 
-#MP4Box :
+##MP4Box :
 
 	MP4Box useful for file conversion from Raw .h264 file to .mp4 file 
 
