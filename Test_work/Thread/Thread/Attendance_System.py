@@ -59,6 +59,27 @@ class Error(Exception):
 class ServerBusyError(Error):
 
    pass
+
+def monitoring(tid, itemId=None, threshold=None):
+    global RUNNING
+    while(RUNNING):
+        print "PID=", os.getpid(), ";id=", tid
+
+        if tid == 1:
+            Loop()
+        
+        if tid == 2:
+            fun2()
+
+        time.sleep(0.2)
+    print "Thread stopped:", tid
+
+def handler(signum, frame):
+    print "Signal is received:" + str(signum)
+    global RUNNING
+    RUNNING=False
+    #global threads
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: LogFileGeneration
 # @ Parameter 	: void
@@ -67,7 +88,6 @@ class ServerBusyError(Error):
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def LogFileGeneration():
 	global gOut
-	print ('LOGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG')
 	os.system('rm -rf Test_Log') # Old Test_Log directory remove when System will restart 
 	os.mkdir( LOG_PATH, 0755 )  # New Test_Log directory generate
 	gOut = csv.writer(open(LOG_FILE_PATH,"w"), delimiter=',' , quoting=csv.QUOTE_ALL) #log.csv file generate in Test_Log directory 
@@ -81,7 +101,6 @@ def Setup():
 	global gCamera
 	global giFlag 
 	giFlag = 1
-	print ('IN SETUPPPPPPPPPPPPPPPPP')
 	LogFileGeneration()
 	gOut.writerow([('Setup Function Intialize_%s' %(str(datetime.now())))])
 	wiringpi.wiringPiSetupGpio()  
@@ -243,7 +262,7 @@ def DoorEvent():
 # @ Brief       : This Function is Looping System
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def Loop():
-	while True:  
+	#while True:  
             
 			print wiringpi.digitalRead(READ_SWITCH)
 			time.sleep(0.2)	
@@ -265,23 +284,37 @@ def Loop():
 
 			#	gOut.writerow([('Door Position_%s' %(str(datetime.now()))),'Close'])
 			#	giFlag = 0
+
 def fun2():
-	while True:
-		print ('In Fun2 >>>>>>>')
-		time.sleep(1)
+	print ('In Fun2 >>>>>>>')
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: main()
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is main function
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-if __name__ == "__main__": 
-	# creating thread 
-	print ('In Main>>>>>>>>>>>')
-	t1 = threading.Thread(target=Loop, args=()) 
-	t2 = threading.Thread(target=fun2, args=())
-	Setup() 
-	t1.start() 
-	t2.start()
-	t1.join() 
-	t2.join() 
+if __name__ == '__main__':
+    signal.signal(signal.SIGUSR1, handler)
+    signal.signal(signal.SIGUSR2, handler)
+    signal.signal(signal.SIGALRM, handler)
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGQUIT, handler)
+    Setup()
+
+    print "Starting all threads..."
+    DoorEventThread = threading.Thread(target=monitoring, args=(1,), kwargs={'itemId':'1', 'threshold':60})
+    DoorEventThread.start()
+    threads.append(DoorEventThread)
+
+    VideoProcessThread = threading.Thread(target=monitoring, args=(2,), kwargs={'itemId':'2', 'threshold':60})
+    VideoProcessThread.start()
+    threads.append(VideoProcessThread)
+
+    while(RUNNING):
+        print "Main program is sleeping."
+        time.sleep(30)
+    for thread in threads:
+        thread.join()
+
+print "All threads stopped."

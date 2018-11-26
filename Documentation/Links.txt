@@ -17,4 +17,16 @@ Make it run on boot :
 
 https://weworkweplay.com/play/raspberry-pi-nodejs/
 
-.
+Pika Message Queue File transfer :
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+https://paulcrickard.wordpress.com/2013/04/17/messaging-in-python-with-rabbitmq-and-pika/
+
+Tutorial:
+----------
+https://www.rabbitmq.com/getstarted.html
+
+RebbitMQ Installing on Debian and Ubuntu :
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+https://www.rabbitmq.com/install-debian.html
+
+
