@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------------------------------------------------------------------------
-#File Name 		   : Attendance_System.py
+#File Name 		   : Attendance_System.py (Threading & Message_Queue)
 #Author(s) 		   : Pratik Panchal
 #Purpose of module : Attendance system provide some features like capture image when door will open,
 # 					 process on image and image will upload on server. 
@@ -38,8 +38,14 @@ giLooper = 0
 global count # testing
 count = 0  # testing
 
+global SendCount
+SendCount = 0
+global RecCount
+RecCount = 0
 global InputFile
 global OutputFile
+global fpInputFile
+global fpOutputFile
 
 abs_path = os.getcwd()
 abs_path = abs_path+'/'
@@ -60,33 +66,13 @@ class ServerBusyError(Error):
 
    pass
 
-def monitoring(tid, itemId=None, threshold=None):
-    global RUNNING
-    while(RUNNING):
-        #print "PID=", os.getpid(), ";id=", tid
-
-        if tid == 1:
-            Loop()
-        
-        if tid == 2:
-            fun2()
-
-        time.sleep(0.2)
-    print "Thread stopped:", tid
-
-def handler(signum, frame):
-    print "Signal is received:" + str(signum)
-    global RUNNING
-    RUNNING=False
-    #global threads
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Log_File_Generation
+# @Function 	: LogFileGeneration
 # @ Parameter 	: void
 # @ Return 		: void
 # @ Brief 		: This Function is Genrate Log data file
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def Log_File_Generation():
+def LogFileGeneration():
 	global gOut
 	os.system('rm -rf Test_Log') # Old Test_Log directory remove when System will restart 
 	os.system('rm -rf Image') # Old Test_Log directory remove when System will restart 
@@ -95,31 +81,35 @@ def Log_File_Generation():
 	gOut = csv.writer(open(LOG_FILE_PATH,"w"), delimiter=',' , quoting=csv.QUOTE_ALL) #log.csv file generate in Test_Log directory 
     
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: setup
+# @Function 	: Setup
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is initialize GPIO ,Camera , Log data file
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def Setup():
 	global gCamera
-	Log_File_Generation()
+	global giFlag
+	giFlag = 1
+	LogFileGeneration()
 	gOut.writerow(['Setup Function Intialize\n'])
 	wiringpi.wiringPiSetupGpio()  
 	wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction     
 	wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
-	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, Door_event) # Interrupt ISR init by using Edge triggering in Rising edge 
+	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
 	gCamera = PiCamera() # camera return : <picamera.camera.PiCamera object at 0x75a382a0>
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Send_data
+# @Function 	: SendData
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Sending Form data on server 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def Send_data(): 
+def SendData(): 
 	global giCount
 	global giTimeCount
 	global giFlag
 	global count # testing
+	global SendCount
+	global RecCount
 	ucStorage = StringIO() 	#setup a "ucStorage" buffer in the form of a StringIO object 
 	c = pycurl.Curl() 		#Create pycurl instance 
 	c.setopt(c.URL, url) 	# URL
@@ -127,8 +117,9 @@ def Send_data():
 	c.setopt(c.POST, 1)  # 1 - URL query parameters
 	#testing
 	#~~~~~~~~~~~~~~~~~~~~
-	img = ("Image/image%s.jpg" % (count - 1)) 
-	send = [("file", (c.FORM_FILE, abs_path+img)),("timestamp",str(datetime.now())),]
+	#img = ("Image/image%s.jpg" % (count - 1)) 
+	send = [("file", (c.FORM_FILE,'outputimage.jpg')),("timestamp",str(datetime.now())),]
+	os.system('cp outputimage.jpg outputimage_%s.jpg' %SendCount)
 	#~~~~~~~~~~~~~~~~~~~~
 	#send = [("file", (c.FORM_FILE, "image.jpg")),("timestamp",str(datetime.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
 	c.setopt(c.HTTPPOST,send) 		   # POST "form data" on server
@@ -184,14 +175,17 @@ def Send_data():
 				gOut.writerow(['Server Busy overflaw'])
 				giFlag = 0
 			Loop()
-					 
+	
+	#os.system('rm -rf outputimage.jpg')
+	SendCount+=1
+	RecCount+=1
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: capture_image
+# @Function 	: CaptureImage
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Capturing Image 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		 
-def capture_image():
+def CaptureImage():
 			global count
 			gOut.writerow(['Capture Image','Sucess'])
 			#gCamera.capture(IMG_PATH)
@@ -208,20 +202,25 @@ def capture_image():
 # @ Brief       : Door event thread generated file will send using 
 #				  MessageQueueSendFile() function
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-
 def MessageQueueSendFile():
-	global count
+	global SendCount
 	global InputFile
-	print ('MsgQueue_Send_Count:%d'% count)
-	fpInputFile = open(abs_path+'Image/image%s.jpg'% count,"rb")
+	global fpInputFile
+	print ('MsgQueue_Send_Count:%d'% SendCount)
+	try:
+		fpInputFile = open(abs_path+'Image/image%s.jpg'% (SendCount),"rb") 
+	except FileNotFoundError: 
+		
+		pass
+
 	InputFile = fpInputFile.read()
 
 	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 	channel = connection.channel()
-
-	channel.queue_declare(queue='key%s'% count)	
-	channel.basic_publish(exchange='', routing_key='key%s'% count, body=InputFile)
-	print(" [x] Sent 'Test'")
+	channel.queue_declare(queue='key%s'% SendCount)	
+	channel.basic_publish(exchange='', routing_key='key%s'% SendCount, body=InputFile)
+	print('[x] Sent_image%s.jpg' %(SendCount))
+	print('[x] Key:%s' %(SendCount))
 	gOut.writerow([('MessageQueue:InputFile_Sent_%s' %(str(datetime.now())))])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: MessageQueueReceiveFile
@@ -231,31 +230,37 @@ def MessageQueueSendFile():
 #				  MessageQueueReceiveFile() function
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
 def MessageQueueReceiveFile():
-	global count
+	global RecCount
 	global OutputFile
-	print ('MsgQueue_Rec_Count:%d'% count)
-	fpOutputFile = open("outputimage.jpg","wb")
+	global fpOutputFile
+	print ('MsgQueue_Rec_Count:%d'% RecCount)
+	fpOutputFile = open(abs_path+'outputimage.jpg',"wb")
 	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 	channel = connection.channel()
-	channel.queue_declare(queue='key%s'% count)	
+	channel.queue_declare(queue=('key%s' %RecCount))
 
 	def callback(ch, method, properties, body):
     		fpOutputFile.write(body)
     		fpOutputFile.close()
-    #print(" [x] Received %r" % body)
+			#print(" [x] Received %r" % body)
+        	ch.stop_consuming()
+	
 	channel.basic_consume(callback,
-                      queue='key%s'% count,
+                      queue=('key%s' %RecCount),
                       no_ack=True)
-
+	print("[x] Received")
+	print('[x] Received_image%s.jpg' %(RecCount))
+	print('[x] Key:%s' %(RecCount))
+	# os.system('rm outputimage.jpg')
 	print(' [*] Waiting for messages. To exit press CTRL+C')
 	channel.start_consuming()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Door_event
+# @Function 	: DoorEventInterrupt
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Interrupt Service Routine
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def Door_event():
+def DoorEventInterrupt():
 	global giFlag
 	giFlag = 1
 	gOut.writerow(['In Interrupt','Door Event Init'])
@@ -264,10 +269,10 @@ def Door_event():
 # @Function 	: Loop
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : This Function is Looping System
+# @ Brief       : This Function is monitor Door position and accordingly do action
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def Loop():
-	#while True:  
+  
 			print wiringpi.digitalRead(READ_SWITCH)
 			time.sleep(0.2)	
 			global giFlag
@@ -280,20 +285,37 @@ def Loop():
 				for giLooper in range(ENTRY_IMAGES):
 					gOut.writerow(['Door Position','Open'])
 					time.sleep(0.2)	
-					capture_image()
-					MessageQueueSendFile():
-					#Send_data()
+					CaptureImage()
+					MessageQueueSendFile()
 					print ('Loop %s' %giLooper)	
 					if giLooper <= (ENTRY_IMAGES - 1):
 						giFlag = 0
 			else:
 				gOut.writerow(['Door Position','Close'])
-			#gOut.writerow(['Door Position','Close'])
-			#gOut.writerow(['Flag','%s' %giFlag])
-			#gOut.writerow(['count', '%s' %giCount])
-			#gOut.writerow(['GPIO','%d' % wiringpi.digitalRead(READ_SWITCH)])
-def fun2():
-		print "In fun2 >>>>"
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# @Function 	: DoorEventThread()
+# @ Parameter   : void
+# @ Return      : void
+# @ Brief       : Generate Image and Send image using message queue 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def DoorEventThread():
+	while True:
+		print("In thread1")
+		Loop()
+		time.sleep(1)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# @Function 	: ImageUploadThread()
+# @ Parameter   : void
+# @ Return      : void
+# @ Brief       : Catch Image through message queue and Send it on server 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def ImageUploadThread():
+    while True: 
+		print("In thread2")
+		MessageQueueReceiveFile()
+		SendData()
+		time.sleep(1)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: main()
@@ -302,26 +324,18 @@ def fun2():
 # @ Brief       : This Function is main function
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 if __name__ == '__main__':
-    signal.signal(signal.SIGUSR1, handler)
-    signal.signal(signal.SIGUSR2, handler)
-    signal.signal(signal.SIGALRM, handler)
-    signal.signal(signal.SIGINT, handler)
-    signal.signal(signal.SIGQUIT, handler)
-    Setup()
-
-    print "Starting all threads..."
-    DoorEventThread = threading.Thread(target=monitoring, args=(1,), kwargs={'itemId':'1', 'threshold':60})
-    DoorEventThread.start()
-    threads.append(DoorEventThread)
-
-    ImageProcessThread = threading.Thread(target=monitoring, args=(2,), kwargs={'itemId':'2', 'threshold':60})
-    ImageProcessThread.start()
-    threads.append(ImageProcessThread)
-
-    while(RUNNING):
-        print "Main program is sleeping."
-        time.sleep(60)
-    for thread in threads:
-        thread.join()
+ 
+	Setup()	
+	#Create Threads 
+	t1 = threading.Thread(target=DoorEventThread, args=())	
+	t2 = threading.Thread(target=ImageUploadThread, args=())
+	#Start DoorEventThread
+	t1.start()
+	#Start ImageUploadThread 
+	t2.start()
+	# wait until DoorEventThread is completely executed 
+	t1.join()
+	# wait until ImageUploadThread is completely executed
+	t2.join()
 
 print "All threads stopped."
