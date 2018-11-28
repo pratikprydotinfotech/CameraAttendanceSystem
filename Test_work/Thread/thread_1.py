@@ -39,3 +39,12 @@ if __name__ == "__main__":
     # both threads completely executed 
     print("Done!") 
 
+#if __name__ == "__main__": 
+	# creating thread 
+#	Setup()
+#	t1 = threading.Thread(target=Loop, args=()) 
+#	t2 = threading.Thread(target=thread2, args=()) 
+#	t1.start() 
+#	t2.start()
+#	t1.join() 
+#	t2.join() 

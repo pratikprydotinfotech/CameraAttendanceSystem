@@ -1,0 +1,49 @@
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# @Function 	: MessageQueueSendFile
+# @ Parameter   : void
+# @ Return      : void
+# @ Brief       : Door event thread generated file will send using 
+#				  MessageQueueSendFile() function
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
+
+def MessageQueueSendFile():
+	global count
+	global InputFile
+	print ('MsgQueue_Send_Count:%d'% count)
+	fpInputFile = open(abs_path+'Image/image%s.jpg'% count,"rb")
+	InputFile = fpInputFile.read()
+
+	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+	channel = connection.channel()
+
+	channel.queue_declare(queue='key%s'% count)	
+	channel.basic_publish(exchange='', routing_key='key%s'% count, body=InputFile)
+	print(" [x] Sent 'Test'")
+	gOut.writerow([('MessageQueue:InputFile_Sent_%s' %(str(datetime.now())))])
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# @Function 	: MessageQueueReceiveFile
+# @ Parameter   : void
+# @ Return      : void
+# @ Brief       : Image process thread Receive File and process on Image 
+#				  MessageQueueReceiveFile() function
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
+def MessageQueueReceiveFile():
+	global count
+	global OutputFile
+	print ('MsgQueue_Rec_Count:%d'% count)
+	fpOutputFile = open("outputimage.jpg","wb")
+	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+	channel = connection.channel()
+	channel.queue_declare(queue='key%s'% count)	
+
+	def callback(ch, method, properties, body):
+    		fpOutputFile.write(body)
+    		fpOutputFile.close()
+    #print(" [x] Received %r" % body)
+	channel.basic_consume(callback,
+                      queue='key%s'% count,
+                      no_ack=True)
+
+	print(' [*] Waiting for messages. To exit press CTRL+C')
+	channel.start_consuming()
