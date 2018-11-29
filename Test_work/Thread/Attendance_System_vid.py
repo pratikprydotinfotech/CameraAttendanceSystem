@@ -46,7 +46,6 @@ abs_path = abs_path+'/'
 
 url = "http://192.168.0.4:9128/upload"
 DEFINE_INTERATION = 3 # Interation for Server busy status and Time out Status 
-ENTRY_IMAGES = 7 # Door open then 5 images will capture and send on server 
 READ_SWITCH = 23 # Reed_switch GPIO use 23 
 
 
@@ -65,10 +64,10 @@ class ServerBusyError(Error):
    pass
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: LogFileGeneration
+# @Function 	: LogFileGeneration()
 # @ Parameter 	: void
 # @ Return 		: void
-# @ Brief 		: This Function is Genrate Log data file
+# @ Brief 		: This Function is Genrate Log and Raw Video directory
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def LogFileGeneration():
 	global gOut
@@ -78,29 +77,29 @@ def LogFileGeneration():
 	os.mkdir( RAW_FILE_PATH, 0755 )  # New Test_Log directory generate
 	gOut = csv.writer(open(LOG_FILE_PATH,"w"), delimiter=',' , quoting=csv.QUOTE_ALL) #log.csv file generate in Test_Log directory 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Setup
+# @Function 	: Setup()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : This Function is initialize GPIO ,Camera , Log data file
+# @ Brief       : This Function is initialize GPIO ,Camera,Log and Raw Video directory
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def Setup():
 	global gCamera
 	global giFlag 
 	giFlag = 1
-	LogFileGeneration()
+	LogFileGeneration() # Generate Log and Raw file Video Directory
 	gOut.writerow([('Setup Function Intialize_%s' %(str(datetime.now())))])
-	wiringpi.wiringPiSetupGpio()  
+	wiringpi.wiringPiSetupGpio() # Initialize wiring GPIO   
 	wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction     
 	wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
-	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, DoorEvent) # Interrupt ISR init by using Edge triggering in Rising edge 
-	#gOut.writerow(['GPIO Init','Sucess']) 
+	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
 	gCamera = PiCamera() # camera return : <picamera.camera.PiCamera object at 0x75a382a0>
-	#gOut.writerow(['Camera Init','Sucess'])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: VideoTimeDuration
+# @Function 	: VideoTimeDuration()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : This Function give time duration of Video
+# @ Brief       : This Function give time duration of Video and 
+#				  Check if video Time duration <=1.0 Sec then discard video
+#				  else Send video file on server.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def VideoTimeDuration():
 	global giVidCount
@@ -126,7 +125,7 @@ def VideoTimeDuration():
 		
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: SendData
+# @Function 	: SendData()
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : This Function is Sending Form data on server 
@@ -203,10 +202,10 @@ def SendData():
 giFlag = 0
 			 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: CaptureVideo
+# @Function 	: CaptureVideo()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : This Function is Capturing Video 
+# @ Brief       : This Function is Capturing Video when Door event occur.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		 
 def CaptureVideo():		
 			global giFlag
@@ -230,31 +229,31 @@ def CaptureVideo():
 			
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: MessageQueueSendFile
+# @Function 	: MessageQueueSendFile()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : Door event thread generated file will send using 
-#				  MessageQueueSendFile() function
+# @ Brief       : This function will send video(n).h264 raw file path using  
+#				  to MessageQueueRecFile() function.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
 def MessageQueueSendFile():
 	global SendCount
 	global InputFile
 	print ('MsgQueue_Send_Count:%d'% giVidCount)
-	InputFile = ('Raw_Video/video%s.h264'% (giVidCount))
+	InputFile = ('Raw_Video/video%s.h264'% (giVidCount)) #Raw file video(n).h264 path
 
 	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 	channel = connection.channel()
-	channel.queue_declare(queue='key%s'% giVidCount)	
-	channel.basic_publish(exchange='', routing_key='key%s'% giVidCount, body=InputFile)
+	channel.queue_declare(queue='key%s'% giVidCount) # Generate Key(n)	
+	channel.basic_publish(exchange='', routing_key='key%s'% giVidCount, body=InputFile) #Send body as a video(n).h264 file path
 	print('[x] Sent_path : %s' %(InputFile))
 	print('[x] Key:%s' %(giVidCount))
 	gOut.writerow([('MessageQueue:InputFile_Sent_%s' %(str(datetime.now())))])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: MessageQueueReceiveFile
+# @Function 	: MessageQueueReceiveFile()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : Image process thread Receive File and process on Image 
-#				  MessageQueueReceiveFile() function
+# @ Brief       : This function Receive generated raw.h264 file path and converting 
+#				  raw.h264 to .mp4 video file and Call Videoduration() function
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
 def MessageQueueReceiveFile():
 	global RecCount
@@ -262,44 +261,45 @@ def MessageQueueReceiveFile():
 	global SendCount
 	global RecCount
 	print ('MsgQueue_Rec_Count:%d'% giVidCount)
-	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost')) #Connection establish with RabbitMQ server
 	channel = connection.channel()
-	channel.queue_declare(queue=('key%s' %giVidCount))
+	channel.queue_declare(queue=('key%s' %giVidCount)) #Generate Key
 
-	def callback(ch, method, properties, body):
-			print(" [x] Received %r" % body)
-			ch.stop_consuming()
+	def callback(ch, method, properties, body): #callback function is called by the Pika library. 
+			print(" [x] Received %r" % body) #body argument collect message will print on the screen. 
+			ch.stop_consuming() 
 			VideoRecPath = body
-			print(" [x] data %r" % VideoRecPath) 
-			
-			print ('MP4Box -fps 30 -add '+VideoRecPath+' outfile.mp4')
-			os.system('MP4Box -fps 30 -add '+VideoRecPath+' outfile.mp4')
-			os.system('cp outfile.mp4 VID_%d.mp4' %giVidCount)
+			print(" [x] data %r" % VideoRecPath) # Get raw video path in VideoRecPath buffer 
+			os.system('MP4Box -fps 30 -add '+VideoRecPath+' outfile.mp4') # raw.h264 to .mp4 Conversion
+			os.system('cp outfile.mp4 VID_%d.mp4' %giVidCount) # Copy current outfile.mp4 to number of VID_(n).mp4 
 			gOut.writerow(['MP4 file generated_%s' %(str(datetime.now()))])	
-			VideoTimeDuration()
-	
-	channel.basic_consume(callback,
+			VideoTimeDuration() #This Function will call for check Video time duration.
+
+	channel.basic_consume(callback,				# Particular callback function should receive messages from our Key.
                       queue=('key%s' %giVidCount),
                       no_ack=True)
 	print('[x] Key:%s' %(giVidCount))
 	print(' [*] Waiting for messages. To exit press CTRL+C')
-	channel.start_consuming()
+	time.sleep(1)
+	channel.start_consuming() # Never-ending loop that waits for data and runs callbacks whenever necessary.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: DoorEvent
+# @Function 	: DoorEventInterrupt()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : This Function is Interrupt Service Routine
+# @ Brief       : This Function is Interrupt Service Routine. 
+#				  ISR affected when Door posion is Open.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def DoorEvent():
+def DoorEventInterrupt():
 	global giFlag
 	giFlag = 1
 	gOut.writerow([('In Interrupt_%s' %(str(datetime.now()))),'Door Event Init'])
 	print ('In ISR')
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Loop
+# @Function 	: Loop()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : This Function is Looping System
+# @ Brief       : Function will monitor Door position and capture Video and 
+#				  send video path using MessageQueueSendFile()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def Loop():
 	while True:  
@@ -314,22 +314,15 @@ def Loop():
 			if wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1:   
 					gOut.writerow([('Door Position_%s' %(str(datetime.now()))),'Open'])
 					print ('OPEN')
-					#time.sleep(0.2)	
 					CaptureVideo()
 					MessageQueueSendFile()
-					
-					#giFlag = 0
 			else:
 				print ('CLOSE')
-				#os.system('rm -rf outfile.mp4 video.h264')
-
-			#	gOut.writerow([('Door Position_%s' %(str(datetime.now()))),'Close'])
-			#	giFlag = 0
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: DoorEventThread()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : Generate Image and Send image using message queue 
+# @ Brief       : Generate Video and Send Video path using message queue 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def DoorEventThread():
 	while True:
@@ -337,10 +330,10 @@ def DoorEventThread():
 		Loop()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: ImageUploadThread()
+# @Function 	: VideoUploadThread()
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : Catch Image through message queue and Send it on server 
+# @ Brief       : Receive Video path using message queue 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def VideoUploadThread():
     	while True: 
