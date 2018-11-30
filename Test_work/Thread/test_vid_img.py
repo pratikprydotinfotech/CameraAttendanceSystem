@@ -37,22 +37,30 @@ gfDurationBuf = 0
 global giVidCount
 giVidCount = 0
 
+global count # testing
+count = 0  # testing
+
 global InputFile
-global VideoRecPath
+global MQRecPath
 
 abs_path = os.getcwd()
 abs_path = abs_path+'/'
 
 url = "http://192.168.0.4:9128/upload"
+DEFINE_MODE = 0 # image = 0 ; video = 1
+ENTRY_IMAGES = 1 # Door open then 5 images will capture and send on server 
 DEFINE_INTERATION = 3 # Interation for Server busy status and Time out Status 
 READ_SWITCH = 23 # Reed_switch GPIO use 23 
 
-
+IMAGE_DIR_PATH = abs_path+"Image"
 LOG_DIR_PATH = abs_path+"Test_Log" # Log directory generation path
 MP4_DIR_PATH = abs_path+"MP4_Video" # Output .mp4 file generation path
 LOG_FILE_PATH = abs_path+"Test_Log/log.csv" #log.csv file generation path
 RAW_DIR_PATH = abs_path+'Raw_Video' # Raw .h264 file generation path
 WIFI_FILE_PATH = '$(echo $(pwd)/Test_Log/WifiNetLog.csv)' # WifiConnectivity log file path
+MP4_FILE_PATH = (abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)
+MQ_IMAGE_PATH = (abs_path+'Image/image%s.jpg'% (giVidCount))
+MQ_VIDEO_PATH = (abs_path+'Raw_Video/video%s.h264'% (giVidCount))
 DATE_TIME = ('%s' %(str(datetime.now())))
 TIMEOUT_SEC = 1 # Server Time out e.g 1 Sec  
 
@@ -93,6 +101,8 @@ def LogFileGeneration():
 	os.mkdir( RAW_DIR_PATH, 0755 )  # New Raw_Video directory generate
 	os.system('rm -rf MP4_Video') # MP4_Video directory remove 
 	os.mkdir( MP4_DIR_PATH, 0755 )  # New MP$_Video directory generate
+	os.system('rm -rf Image') # Image directory remove 
+	os.mkdir( IMAGE_DIR_PATH, 0755 )  # New MP$_Video directory generate
 	os.system('echo "Wifi_Internet_Connectivity_Status" >> '+WIFI_FILE_PATH)
 	os.system('echo "Date&Time,Net_Connectivity" >> '+WIFI_FILE_PATH)
 	fpLogFile = open(LOG_FILE_PATH,"w")
@@ -110,9 +120,17 @@ def Setup():
 	LogFileGeneration() # Generate Log and Raw file Video Directory
 	gOut.writerow([DATE_TIME,'Setup Function Intialize'])
 	wiringpi.wiringPiSetupGpio() # Initialize wiring GPIO   
-	wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction     
-	wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
-	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
+	
+	if DEFINE_MODE == 0:
+		READ_SWITCH = 24
+		wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
+		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction  
+		wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_FALLING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
+	if DEFINE_MODE == 1:
+		READ_SWITCH = 23
+		wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
+		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction  
+		wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge    
 	gCamera = PiCamera() # camera return : <picamera.camera.PiCamera object at 0x75a382a0>
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: VideoTimeDuration()
@@ -138,7 +156,7 @@ def VideoTimeDuration():
 		gOut.writerow([DATE_TIME,'Discard_Video','MP4_Video/VID_%d.mp4' %giVidCount])
 		os.system('rm -rf outfile.mp4')
 	else:
-		SendData()
+		SendData(MP4_FILE_PATH)
 		os.system('rm -rf outfile.mp4')
 		gOut.writerow([DATE_TIME,'Store_Video','MP4_Video/VID_%d.mp4' %giVidCount])
 	giVidCount += 1
@@ -150,7 +168,7 @@ def VideoTimeDuration():
 # @ Return      : void
 # @ Brief       : This Function is Sending Form data on server 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def SendData(): 
+def SendData(SendFilePath): 
 	global giCount
 	global giTimeCount
 	global giFlag
@@ -161,7 +179,7 @@ def SendData():
 	c.setopt(c.URL, url) 	# URL
 	c.setopt(c.WRITEFUNCTION, ucStorage.write)  # write data into "ucStorage" data buffer using WRITEFUNCTION (Number of bytes written)
 	c.setopt(c.POST, 1)  # 1 - URL query parameters
-	send = [("file", (c.FORM_FILE,abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)),("timestamp",str(datetime.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
+	send = [("file", (c.FORM_FILE,SendFilePath)),("timestamp",str(datetime.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
 
 	c.setopt(c.HTTPPOST,send) 		   # POST "form data" on server
 	c.setopt(pycurl.CONNECTTIMEOUT, TIMEOUT_SEC) # Timeout 1 second
@@ -180,7 +198,7 @@ def SendData():
 		if giTimeCount >= DEFINE_INTERATION: # 3 times time out interation check then flag will be zero and will go in ideal state 
 				giTimeCount = 0
 				giFlag = 0
-		Loop()
+		#Loop()
     
 	c.close() 
 	
@@ -214,7 +232,7 @@ def SendData():
 				giCount = 0
 				gOut.writerow([DATE_TIME,'Server Status','Busy_Overflaw'])
 				giFlag = 0
-			Loop()
+			#Loop()
 giFlag = 0
 			 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -238,7 +256,20 @@ def CaptureVideo():
 						
 			gCamera.stop_recording()
 			gOut.writerow([DATE_TIME,'Video_Recording_Stop'])
-
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# @Function 	: CaptureImage
+# @ Parameter   : void
+# @ Return      : void
+# @ Brief       : This Function is Capturing Image 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		 
+def CaptureImage():
+			global count
+			gOut.writerow(['Capture Image','Sucess'])
+			gCamera.framerate = 15
+			gCamera.resolution = (1024, 768) 
+			gCamera.annotate_text = ('Rydot infotech Attendance System_'+DATE_TIME)
+			gCamera.capture(abs_path+'Image/image%s.jpg'% count) 
+			count+=1
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: MessageQueueSendFile()
 # @ Parameter   : void
@@ -246,10 +277,10 @@ def CaptureVideo():
 # @ Brief       : This function will send video(n).h264 raw file path using  
 #				  to MessageQueueRecFile() function.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def MessageQueueSendFile():
+def MessageQueueSendFile(MQSendPath):
 	global InputFile
 	print ('MsgQueue_Send_Count:%d'% giVidCount)
-	InputFile = ('Raw_Video/video%s.h264'% (giVidCount)) #Raw file video(n).h264 path
+	InputFile = (MQSendPath) #Raw file video(n).h264 path
 
 	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 	channel = connection.channel()
@@ -275,14 +306,19 @@ def MessageQueueReceiveFile():
 	def callback(ch, method, properties, body): #callback function is called by the Pika library. 
 			print(" [x] Received %r" % body) #body argument collect message will print on the screen. 
 			ch.stop_consuming() 
-			VideoRecPath = body
-			print(" [x] data %r" % VideoRecPath) # Get raw video path in VideoRecPath buffer 
-			gOut.writerow([DATE_TIME,'MessageQueue: ReceiveFilePath','%s' %VideoRecPath])
-			os.system('MP4Box -fps 30 -add '+VideoRecPath+' outfile.mp4') # raw.h264 to .mp4 Conversion
-			time.sleep(1)
-			os.system('cp outfile.mp4 MP4_Video/VID_%d.mp4' %giVidCount) # Copy current outfile.mp4 to number of VID_(n).mp4 
-			gOut.writerow([DATE_TIME,'MP4 File Generated','MP4_Video/VID_%d.mp4' %giVidCount])
-			VideoTimeDuration() #This Function will call for check Video time duration.
+			MQRecPath = body
+			print(" [x] data %r" % MQRecPath) # Get raw video path in MQRecPath buffer 
+
+			if DEFINE_MODE == 0: #For Image Mode
+				SendData(MQRecPath)
+				giVidCount += 1
+			if DEFINE_INTERATION == 1: #For Video Mode
+				gOut.writerow([DATE_TIME,'MessageQueue: ReceiveFilePath','%s' %MQRecPath])
+				os.system('MP4Box -fps 30 -add '+MQRecPath+' outfile.mp4') # raw.h264 to .mp4 Conversion
+				time.sleep(1)
+				os.system('cp outfile.mp4 MP4_Video/VID_%d.mp4' %giVidCount) # Copy current outfile.mp4 to number of VID_(n).mp4 
+				gOut.writerow([DATE_TIME,'MP4 File Generated','MP4_Video/VID_%d.mp4' %giVidCount])
+				VideoTimeDuration() #This Function will call for check Video time duration.
 
 	channel.basic_consume(callback,				# Particular callback function should receive messages from our Key.
                       queue=('key%s' %giVidCount),
@@ -309,7 +345,7 @@ def DoorEventInterrupt():
 # @ Brief       : Function will monitor Door position and capture Video and 
 #				  send video path using MessageQueueSendFile()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def Loop():
+def VideoLoop():
 	while True:  
             
 			#print wiringpi.digitalRead(READ_SWITCH)
@@ -323,10 +359,37 @@ def Loop():
 					gOut.writerow([DATE_TIME,'Door Position','Open'])
 					print ('OPEN')
 					CaptureVideo()
-					MessageQueueSendFile()
+					MessageQueueSendFile(MQ_VIDEO_PATH)
 			else:
 				print ('CLOSE')
 				gOut.writerow([DATE_TIME,'Door Position','Close'])
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# @Function 	: Loop()
+# @ Parameter   : void
+# @ Return      : void
+# @ Brief       : Function will monitor Door position and capture Image and 
+#				  send image path using MessageQueueSendFile()
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def ImageLoop():
+			print wiringpi.digitalRead(READ_SWITCH)
+			time.sleep(0.2)	
+			global giFlag
+			global giInteration
+			global giCount
+			print ('flag %s' %giFlag)
+			print ('count %s' %giCount)				
+			print ('In Loop')
+			if giFlag == 1:   
+				for giInteration in range(ENTRY_IMAGES):
+					gOut.writerow(['Door Position','Open'])
+					time.sleep(0.2)	
+					CaptureImage()
+					MessageQueueSendFile(MQ_IMAGE_PATH)
+					print ('Loop %s' %giInteration)	
+					if giInteration <= (ENTRY_IMAGES - 1):
+						giFlag = 0
+			else:
+				gOut.writerow(['Door Position','Close'])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: DoorEventThread()
 # @ Parameter   : void
@@ -336,7 +399,10 @@ def Loop():
 def DoorEventThread():
 	while True:
 		print("In thread1")
-		Loop()
+		if DEFINE_MODE == 0:
+			ImageLoop()	
+		if DEFINE_MODE == 1:
+			VideoLoop()
 		if flag == 1:
 			break
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -345,13 +411,24 @@ def DoorEventThread():
 # @ Return      : void
 # @ Brief       : Receive Video path using message queue 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def VideoUploadThread():
+def UploadThread():
     	while True: 
 			print("In thread2")
 			MessageQueueReceiveFile()
 			if flag == 1:
 				break
-			
+
+def InitThread():
+	#Create Threads 
+	gOut.writerow([DATE_TIME,'Create threads'])
+	t1 = threading.Thread(target=UploadThread, args=())	
+	t2 = threading.Thread(target=DoorEventThread, args=())
+	#Start DoorEventThread
+	gOut.writerow([DATE_TIME,'Start VideoUpload Thread'])
+	t1.start()
+	#Start ImageUploadThread
+	gOut.writerow([DATE_TIME,'Start DoorEvent Thread']) 
+	t2.start()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: main()
 # @ Parameter   : void
@@ -361,16 +438,7 @@ def VideoUploadThread():
 if __name__ == '__main__':
 	global fpLogFile
 	Setup()	
-	#Create Threads 
-	gOut.writerow([DATE_TIME,'Create threads'])
-	t1 = threading.Thread(target=VideoUploadThread, args=())	
-	t2 = threading.Thread(target=DoorEventThread, args=())
-	#Start DoorEventThread
-	gOut.writerow([DATE_TIME,'Start VideoUpload Thread'])
-	t1.start()
-	#Start ImageUploadThread
-	gOut.writerow([DATE_TIME,'Start DoorEvent Thread']) 
-	t2.start()
+	InitThread()
 	killer = GracefulKill()
 	while True:
 		time.sleep(1)
@@ -379,8 +447,8 @@ if __name__ == '__main__':
 			flag=1
 			fpLogFile.close()
 			break
-	pid = os.getpid()
-	os.system('kill -9 %s' %pid)
+	iPid = os.getpid()
+	os.system('kill -9 %s' %iPid)
 
 	gOut.writerow([DATE_TIME,'Terminate Process by Signal'])
 	# wait until DoorEventThread is completely executed 

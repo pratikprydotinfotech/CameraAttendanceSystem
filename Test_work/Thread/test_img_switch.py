@@ -20,7 +20,7 @@ from time import sleep 		  # sleep function use from time library module
 
 
 global giFlag 				  # globally define flag
-giFlag = 1
+giFlag = 0
 
 global gOut
 
@@ -49,10 +49,11 @@ abs_path = abs_path+'/'
 url = "http://192.168.0.4:9128/upload"
 DEFINE_INTERATION = 3 # Interation for Server busy status and Time out Status 
 ENTRY_IMAGES = 1 # Door open then 5 images will capture and send on server 
-READ_SWITCH = 23 # Reed_switch GPIO use 23 
+READ_SWITCH = 24 # Reed_switch GPIO use 23 
 LOG_PATH = abs_path+"Test_Log"
 IMG_PATH = abs_path+"Image" 
 LOG_FILE_PATH = abs_path+"Test_Log/log.csv"
+DATE_TIME = ('%s' %(str(datetime.now())))
 # define user-defined exceptions for Server Busy
 class Error(Exception):
    """Base class for other exceptions"""
@@ -100,13 +101,12 @@ def LogFileGeneration():
 def Setup():
 	global gCamera
 	global giFlag
-	giFlag = 1
 	LogFileGeneration()
 	gOut.writerow(['Setup Function Intialize\n'])
 	wiringpi.wiringPiSetupGpio()  
 	wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction     
 	wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
-	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_RISING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
+	wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_FALLING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
 	gCamera = PiCamera() # camera return : <picamera.camera.PiCamera object at 0x75a382a0>
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: SendData
@@ -164,7 +164,6 @@ def SendData(ImageRecPathh):
 	 gOut.writerow(['value %s' % ucContent])
  
 # Try and Exception for Status of Server 
-
 	try:
 
 			if j['success'] == False:
@@ -195,6 +194,8 @@ def CaptureImage():
 			global count
 			gOut.writerow(['Capture Image','Sucess'])
 			gCamera.framerate = 15
+			gCamera.resolution = (1024, 768) 
+			gCamera.annotate_text = ('Rydot infotech Attendance System_'+DATE_TIME)
 			gCamera.capture(abs_path+'Image/image%s.jpg'% count) 
 			count+=1
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -272,7 +273,7 @@ def Loop():
 			print ('flag %s' %giFlag)
 			print ('count %s' %giCount)				
 			print ('In Loop')
-			if wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1:   
+			if giFlag == 1:   
 				for giInteration in range(ENTRY_IMAGES):
 					gOut.writerow(['Door Position','Open'])
 					time.sleep(0.2)	
@@ -320,12 +321,12 @@ if __name__ == '__main__':
 	global f
 	Setup()	
 	#Create Threads 
-	t1 = threading.Thread(target=DoorEventThread, args=())	
-	t2 = threading.Thread(target=ImageUploadThread, args=())
+	t1 = threading.Thread(target=ImageUploadThread, args=())	
+	t2 = threading.Thread(target=DoorEventThread, args=())
 	#Start DoorEventThread
-	t1.start()
-	#Start ImageUploadThread 
 	t2.start()
+	#Start ImageUploadThread 
+	t1.start()
 
 	killer = grace()
 	while True:
