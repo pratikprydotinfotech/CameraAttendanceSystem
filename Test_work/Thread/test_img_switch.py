@@ -46,7 +46,7 @@ global f
 abs_path = os.getcwd()
 abs_path = abs_path+'/'
 
-url = "http://192.168.0.4:9128/upload"
+url = "http://192.168.0.4:3000/upload"
 DEFINE_INTERATION = 3 # Interation for Server busy status and Time out Status 
 ENTRY_IMAGES = 1 # Door open then 5 images will capture and send on server 
 READ_SWITCH = 24 # Reed_switch GPIO use 23 
@@ -321,8 +321,9 @@ if __name__ == '__main__':
 	global f
 	Setup()	
 	#Create Threads 
-	t1 = threading.Thread(target=ImageUploadThread, args=())	
-	t2 = threading.Thread(target=DoorEventThread, args=())
+	
+	t1 = threading.Thread(target=DoorEventThread, args=())	
+	t2 = threading.Thread(target=ImageUploadThread, args=())
 	#Start DoorEventThread
 	t2.start()
 	#Start ImageUploadThread 

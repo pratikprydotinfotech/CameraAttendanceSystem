@@ -21,7 +21,7 @@ from subprocess import check_output #check_output subprocess creating for VideoD
 from picamera import PiCamera # pi camera function use from picamera module
 from time import sleep 		  # sleep function use from time library module      
 global giFlag 				  # globally define flag
-giFlag = 1
+giFlag = 0
 
 global gOut
 
@@ -41,13 +41,16 @@ global count # testing
 count = 0  # testing
 
 global InputFile
-global MQRecPath
+
+global ImageRecPath
+global VideoRecPath
 
 abs_path = os.getcwd()
 abs_path = abs_path+'/'
 
-url = "http://192.168.0.4:9128/upload"
-DEFINE_MODE = 0 # image = 0 ; video = 1
+DEFINE_MODE = 1 # Define Mode is Image = 0 or Video = 1 for testing purpose
+url = "http://192.168.0.4:3000/upload"
+
 ENTRY_IMAGES = 1 # Door open then 5 images will capture and send on server 
 DEFINE_INTERATION = 3 # Interation for Server busy status and Time out Status 
 READ_SWITCH = 23 # Reed_switch GPIO use 23 
@@ -59,8 +62,6 @@ LOG_FILE_PATH = abs_path+"Test_Log/log.csv" #log.csv file generation path
 RAW_DIR_PATH = abs_path+'Raw_Video' # Raw .h264 file generation path
 WIFI_FILE_PATH = '$(echo $(pwd)/Test_Log/WifiNetLog.csv)' # WifiConnectivity log file path
 MP4_FILE_PATH = (abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)
-MQ_IMAGE_PATH = (abs_path+'Image/image%s.jpg'% (giVidCount))
-MQ_VIDEO_PATH = (abs_path+'Raw_Video/video%s.h264'% (giVidCount))
 DATE_TIME = ('%s' %(str(datetime.now())))
 TIMEOUT_SEC = 1 # Server Time out e.g 1 Sec  
 
@@ -116,17 +117,18 @@ def LogFileGeneration():
 def Setup():
 	global gCamera
 	global giFlag 
-	giFlag = 1
 	LogFileGeneration() # Generate Log and Raw file Video Directory
 	gOut.writerow([DATE_TIME,'Setup Function Intialize'])
 	wiringpi.wiringPiSetupGpio() # Initialize wiring GPIO   
 	
 	if DEFINE_MODE == 0:
+		giFlag = 0
 		READ_SWITCH = 24
 		wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
 		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction  
 		wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_FALLING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
 	if DEFINE_MODE == 1:
+		giFlag = 1
 		READ_SWITCH = 23
 		wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
 		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction  
@@ -156,11 +158,9 @@ def VideoTimeDuration():
 		gOut.writerow([DATE_TIME,'Discard_Video','MP4_Video/VID_%d.mp4' %giVidCount])
 		os.system('rm -rf outfile.mp4')
 	else:
-		SendData(MP4_FILE_PATH)
+		SendData(abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)
 		os.system('rm -rf outfile.mp4')
 		gOut.writerow([DATE_TIME,'Store_Video','MP4_Video/VID_%d.mp4' %giVidCount])
-	giVidCount += 1
-		
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: SendData()
@@ -168,21 +168,22 @@ def VideoTimeDuration():
 # @ Return      : void
 # @ Brief       : This Function is Sending Form data on server 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def SendData(SendFilePath): 
+def SendData(ImageRecPathh): 
 	global giCount
 	global giTimeCount
 	global giFlag
-	global giVidCount
-
+	global count # testing
+	global SendCount
+	global RecCount
 	ucStorage = StringIO() 	#setup a "ucStorage" buffer in the form of a StringIO object 
 	c = pycurl.Curl() 		#Create pycurl instance 
 	c.setopt(c.URL, url) 	# URL
 	c.setopt(c.WRITEFUNCTION, ucStorage.write)  # write data into "ucStorage" data buffer using WRITEFUNCTION (Number of bytes written)
 	c.setopt(c.POST, 1)  # 1 - URL query parameters
-	send = [("file", (c.FORM_FILE,SendFilePath)),("timestamp",str(datetime.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
-
+	print ('[x] buffer %s' %ImageRecPathh) 
+	send = [("file", (c.FORM_FILE,ImageRecPathh)),("timestamp",str(datetime.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
 	c.setopt(c.HTTPPOST,send) 		   # POST "form data" on server
-	c.setopt(pycurl.CONNECTTIMEOUT, TIMEOUT_SEC) # Timeout 1 second
+	c.setopt(pycurl.CONNECTTIMEOUT, 1) # Timeout 1 second
 	
 # Try and Exception for Server Timeout 
 
@@ -192,7 +193,7 @@ def SendData(SendFilePath):
 		
 	except pycurl.error, error:
 		errno, errstr = error
-		gOut.writerow([DATE_TIME,'An error occured','%s' %errstr])
+		gOut.writerow(['An error occurred', '%s' %errstr])
 		print 'An error occurred: ', errstr  # An error occured : Connection timed out after 1001 milliseconds
 		giTimeCount+=1
 		if giTimeCount >= DEFINE_INTERATION: # 3 times time out interation check then flag will be zero and will go in ideal state 
@@ -203,38 +204,38 @@ def SendData(SendFilePath):
 	c.close() 
 	
 	ucContent = ucStorage.getvalue() 	#Data collect in ucContent string from ucStorage buffer
-	print (ucContent)
+	
 	j = json.loads(ucContent) 		# Decode json data
 	
+	print ('value %s' % ucContent)
 # Server status maintain in Log file.
 	
 	if j['success'] == False:
-	 gOut.writerow([DATE_TIME,'Send Data on Server','Fail'])
-	 gOut.writerow([DATE_TIME,'value %s' % ucContent])
+	 gOut.writerow(['Send Data on Server','Fail'])
+	 gOut.writerow(['value %s' % ucContent])
 	else:
-	 gOut.writerow([DATE_TIME,'Send Data on Server','Sucess'])
-	 gOut.writerow([DATE_TIME,'value %s' % ucContent])
-
+	 gOut.writerow(['Send Data on Server','Sucess'])
+	 gOut.writerow(['value %s' % ucContent])
+ 
 # Try and Exception for Status of Server 
-
 	try:
 
 			if j['success'] == False:
 				raise ServerBusyError
 			else:
-				gOut.writerow([DATE_TIME,'Server Status','Healthy'])
+				gOut.writerow(['Server is Healthy'])
+
 	except ServerBusyError:
-			gOut.writerow([DATE_TIME,'Server Status','Busy'])
+			gOut.writerow(['Server Busy'])
 			giCount+=1
 			print ('Server Busy')
 			print ('count %s' %giCount)
 			if giCount >= DEFINE_INTERATION:
 				giCount = 0
-				gOut.writerow([DATE_TIME,'Server Status','Busy_Overflaw'])
+				gOut.writerow(['Server Busy overflaw'])
 				giFlag = 0
 			#Loop()
-giFlag = 0
-			 
+				 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: CaptureVideo()
 # @ Parameter   : void
@@ -279,53 +280,57 @@ def CaptureImage():
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
 def MessageQueueSendFile(MQSendPath):
 	global InputFile
+	global giVidCount
 	print ('MsgQueue_Send_Count:%d'% giVidCount)
 	InputFile = (MQSendPath) #Raw file video(n).h264 path
 
 	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 	channel = connection.channel()
-	channel.queue_declare(queue='key%s'% giVidCount) # Generate Key(n)	
-	channel.basic_publish(exchange='', routing_key='key%s'% giVidCount, body=InputFile) #Send body as a video(n).h264 file path
+	channel.queue_declare(queue='key%s'% (giVidCount-1)) # Generate Key(n)	
+	channel.basic_publish(exchange='', routing_key='key%s'% (giVidCount-1), body=InputFile) #Send body as a video(n).h264 file path
 	print('[x] Sent_path : %s' %(InputFile))
-	print('[x] Key:%s' %(giVidCount))
+	print('[x] Key:%s' %(giVidCount-1))
 	gOut.writerow([DATE_TIME,'MessageQueue: SendFilePath','%s' %InputFile])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: MessageQueueReceiveFile()
+# @Function 	: MessageQueueReceiveFile
 # @ Parameter   : void
 # @ Return      : void
-# @ Brief       : This function Receive generated raw.h264 file path and converting 
-#				  raw.h264 to .mp4 video file and Call Videoduration() function
+# @ Brief       : Image process thread Receive File and process on Image 
+#				  MessageQueueReceiveFile() function
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
 def MessageQueueReceiveFile():
 	global giVidCount
+	global ImageRecPath
+	global VideoRecPath
 	print ('MsgQueue_Rec_Count:%d'% giVidCount)
-	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost')) #Connection establish with RabbitMQ server
+	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 	channel = connection.channel()
-	channel.queue_declare(queue=('key%s' %giVidCount)) #Generate Key
+	channel.queue_declare(queue=('key%s' %giVidCount))
 
-	def callback(ch, method, properties, body): #callback function is called by the Pika library. 
-			print(" [x] Received %r" % body) #body argument collect message will print on the screen. 
-			ch.stop_consuming() 
-			MQRecPath = body
-			print(" [x] data %r" % MQRecPath) # Get raw video path in MQRecPath buffer 
-
-			if DEFINE_MODE == 0: #For Image Mode
-				SendData(MQRecPath)
-				giVidCount += 1
-			if DEFINE_INTERATION == 1: #For Video Mode
-				gOut.writerow([DATE_TIME,'MessageQueue: ReceiveFilePath','%s' %MQRecPath])
-				os.system('MP4Box -fps 30 -add '+MQRecPath+' outfile.mp4') # raw.h264 to .mp4 Conversion
+	def callback(ch, method, properties, body):
+			print(" [x] Received %r" % body)
+			ch.stop_consuming()
+			ImageRecPath = body
+			VideoRecPath = body
+			print(" [x] data %r" % ImageRecPath) 
+			if DEFINE_MODE == 0:
+				SendData(ImageRecPath) # Send data on server
+			if DEFINE_MODE == 1:
+				gOut.writerow([DATE_TIME,'MessageQueue: ReceiveFilePath','%s' %VideoRecPath])
+				os.system('MP4Box -fps 30 -add '+VideoRecPath+' outfile.mp4') # raw.h264 to .mp4 Conversion
 				time.sleep(1)
 				os.system('cp outfile.mp4 MP4_Video/VID_%d.mp4' %giVidCount) # Copy current outfile.mp4 to number of VID_(n).mp4 
 				gOut.writerow([DATE_TIME,'MP4 File Generated','MP4_Video/VID_%d.mp4' %giVidCount])
 				VideoTimeDuration() #This Function will call for check Video time duration.
 
-	channel.basic_consume(callback,				# Particular callback function should receive messages from our Key.
+	channel.basic_consume(callback,
                       queue=('key%s' %giVidCount),
                       no_ack=True)
 	print('[x] Key:%s' %(giVidCount))
+	# os.system('rm outputimage.jpg')
 	print(' [*] Waiting for messages. To exit press CTRL+C')
-	channel.start_consuming() # Never-ending loop that waits for data and runs callbacks whenever necessary.
+	giVidCount+=1
+	channel.start_consuming()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: DoorEventInterrupt()
 # @ Parameter   : void
@@ -352,6 +357,7 @@ def VideoLoop():
 			time.sleep(0.2)	
 			global giFlag
 			global giCount
+			global giVidCount
 			#print ('flag %s' %giFlag)
 			#print ('count %s' %giCount)				
 			print ('giVidCount %s' %giVidCount)
@@ -359,7 +365,7 @@ def VideoLoop():
 					gOut.writerow([DATE_TIME,'Door Position','Open'])
 					print ('OPEN')
 					CaptureVideo()
-					MessageQueueSendFile(MQ_VIDEO_PATH)
+					MessageQueueSendFile(abs_path+'Raw_Video/video%s.h264'% (giVidCount))
 			else:
 				print ('CLOSE')
 				gOut.writerow([DATE_TIME,'Door Position','Close'])
@@ -371,20 +377,23 @@ def VideoLoop():
 #				  send image path using MessageQueueSendFile()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def ImageLoop():
-			print wiringpi.digitalRead(READ_SWITCH)
-			time.sleep(0.2)	
+			
 			global giFlag
 			global giInteration
 			global giCount
+			global giVidCount
+			print wiringpi.digitalRead(READ_SWITCH)
+			time.sleep(0.2)	
 			print ('flag %s' %giFlag)
-			print ('count %s' %giCount)				
+			print ('count %s' %giCount)
+			print ('giVidCount %s' %giVidCount)				
 			print ('In Loop')
 			if giFlag == 1:   
 				for giInteration in range(ENTRY_IMAGES):
 					gOut.writerow(['Door Position','Open'])
 					time.sleep(0.2)	
 					CaptureImage()
-					MessageQueueSendFile(MQ_IMAGE_PATH)
+					MessageQueueSendFile(abs_path+'Image/image%s.jpg' % (giVidCount-1))
 					print ('Loop %s' %giInteration)	
 					if giInteration <= (ENTRY_IMAGES - 1):
 						giFlag = 0
@@ -412,11 +421,11 @@ def DoorEventThread():
 # @ Brief       : Receive Video path using message queue 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def UploadThread():
-    	while True: 
-			print("In thread2")
-			MessageQueueReceiveFile()
-			if flag == 1:
-				break
+	while True: 
+		print("In thread2")
+		MessageQueueReceiveFile()
+		if flag == 1:
+			break
 
 def InitThread():
 	#Create Threads 
