@@ -76,20 +76,30 @@ global VideoRecPath
 global ucContent
 
 global VideoLength
-global MediaType
+global ucMediaType
 
-abs_path = os.getcwd()+'/'
-#abs_path = abs_path+'/'
+abs_path = os.getcwd()
+abs_path = abs_path+'/'
 
-DEFINE_MODE = 1 # Define Mode is Image = 0 or Video = 1 for testing purpose
-url = "http://192.168.0.4:9128/upload"
+#Url for data transfering on server 
+url = "http://192.168.0.4:3000/upload"
 register_url = 'http://192.168.0.4:9128/api/ams/public/devices/register'
 configuration_url = 'http://192.168.0.4:9128/api/ams/public/devices/get-configuration'
 
+#No. of event monitoring Macros
 ENTRY_IMAGES = 1 # Door open then 5 images will capture and send on server 
 DEFINE_INTERATION = 3 # Interation for Server busy status and Time out Status 
-READ_SWITCH = 27 # Reed_switch GPIO use 23 
 
+#GPIO for switching related Macro
+READ_SWITCH = 0 # Reed_switch GPIO 
+
+#Media Parameter Macros
+BRIGHTNESS = 50 
+RESOLUTION_H = 1024
+RESOLUTION_W = 768
+VIDEO_FRAMERATE = 30
+IMAGE_FRAMERATE = 15
+# Files related Macros
 IMAGE_DIR_PATH = abs_path+"Image"
 LOG_DIR_PATH = abs_path+"Test_Log" # Log directory generation path
 MP4_DIR_PATH = abs_path+"MP4_Video" # Output .mp4 file generation path
@@ -99,6 +109,8 @@ WIFI_FILE_PATH = '$(echo $(pwd)/Test_Log/WifiNetLog.csv)' # WifiConnectivity log
 MP4_FILE_PATH = (abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)
 DATE_TIME = ('%s' %(str(dt.now())))
 TIMEOUT_SEC = 1 # Server Time out e.g 1 Sec  
+
+
 
 # define user-defined exceptions for Server Busy
 class Error(Exception):
@@ -168,11 +180,17 @@ def LogFileGeneration():
 def LCDInit():
 # Initialize the LCD using the pins above.
 	lcd.set_backlight(0)
+	str_pad = " " * 16
+	station = str_pad + 'Rydot Infotech Ltd.'
+	for i in range (0, (len(station)+1)):
+		lcd.clear()
+		lcd_text = station[i:(i+16)]
+		lcd.message(lcd_text)
+		time.sleep(0.2)
+
 	lcd.message('Rydot Info. Ltd.')
-	time.sleep(4)	
-	lcd.clear()
-	lcd.message('Ready for')
-	lcd.message('\ntake a Picture')
+	time.sleep(2)	
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: Setup()
 # @ Parameter   : void
@@ -188,19 +206,22 @@ def Setup():
 	wiringpi.wiringPiSetupGpio() # Initialize wiring GPIO
 	LCDInit()   
 	GetConfiguration() # Get VideoLength duration and MediaType : Image/Video
-	if DEFINE_MODE == 0: # For Image
+	if ucMediaType == "image": # For Image
 		giFlag = 0
 		READ_SWITCH = 21
-		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction     
+		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 21 as a Input direction     
 		wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
-		wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_FALLING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge 
-	if DEFINE_MODE == 1: # For Video
+		wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_FALLING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Falling edge 
+		lcd.clear()
+		lcd.message('Ready to take\nPicture')
+	if ucMediaType == "moving": # For Video
 		giFlag = 0
-		READ_SWITCH = 27 # testing
-		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 23 as a Input direction     
+		READ_SWITCH = 27
+		wiringpi.pinMode(READ_SWITCH, 0) # Reed switch GPIO 27 as a Input direction     
 		wiringpi.pullUpDnControl(READ_SWITCH,1) # e.g 1 - PullDown , 0 - PullUp
-		wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_FALLING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Rising edge    
+		wiringpi.wiringPiISR(READ_SWITCH, wiringpi.INT_EDGE_FALLING, DoorEventInterrupt) # Interrupt ISR init by using Edge triggering in Falling edge    
 	gCamera = PiCamera() # camera return : <picamera.camera.PiCamera object at 0x75a382a0>
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: VideoTimeDuration()
 # @ Parameter   : void
@@ -254,9 +275,16 @@ def VideoLengthLimit(seconds):
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def GetConfiguration():
 	global VideoLength
-	global MediaType
+	global ucMediaType
 	gOut.writerow([DATE_TIME,'Enter in GetConfiguration'])
-	data = '{"serialNumber":"1234567890","apiKey":"key-de0bd007143f9e4fb9b628d52fb084f741f","apiSecret":"secret-a0e0ab24569f819036014a587ff9f3b3"}'
+
+	SerialNumber = GetCpuId()
+	ApiKey = "key-de0bd007143f9e4fb9b628d52fb084f741f"
+	ApiSecret = "secret-a0e0ab24569f819036014a587ff9f3b3"
+
+	data = "{\"serialNumber\":"+('\"%s\"' %SerialNumber)+",\"apiKey\":"+('\"%s\",' %ApiKey)+"\"apiSecret\":"+('\"%s\"}' %ApiSecret)
+	print data
+	#data = '{"serialNumber":"1234567890","apiKey":"key-de0bd007143f9e4fb9b628d52fb084f741f","apiSecret":"secret-a0e0ab24569f819036014a587ff9f3b3"}'
 
 	ucStorage = StringIO() 	#setup a "ucStorage" buffer in the form of a StringIO object 
 	c = pycurl.Curl() 	#Create pycurl instance 
@@ -268,13 +296,12 @@ def GetConfiguration():
 	c.setopt(pycurl.POSTFIELDS,data)
 
 	# Try and Exception for Server Timeout 
-
 	try:
 		c.perform()
 		c.setopt(c.URL, configuration_url)
 	except pycurl.error, error:
 		errno, errstr = error
-		print 'An error occurred: ', errstr  # An error occured : Connection timed out after 1001 milliseconds
+		print 'An error occurred: ', errstr  # Conection refused Error
 	c.close() 
 		
 	ucConfigData = ucStorage.getvalue() 	#Data collect in ucContent string from ucStorage buffer
@@ -290,69 +317,13 @@ def GetConfiguration():
 	for VideoLength in video_length:
 		print(VideoLength)
 		gOut.writerow([DATE_TIME,'VideoLength','%d' %VideoLength])
-	for MediaType in Image_Type:
-		print(MediaType)
-		gOut.writerow([DATE_TIME,'MediaType','%s' %MediaType])
+	for ucMediaType in Image_Type:
+		print(ucMediaType)
+		gOut.writerow([DATE_TIME,'MediaType','%s' %ucMediaType])
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: SendData()
-# @ Parameter   : void
-# @ Return      : void
-# @ Brief       : This Function is Sending Form data on server 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
-def SendData(ImageRecPathh): 
-	global giCount
-	global giTimeCount
-	global giFlag
-	global count # testing
-	global SendCount
-	global RecCount
-	global ucContent
-	ucStorage = StringIO() 	#setup a "ucStorage" buffer in the form of a StringIO object 
-	c = pycurl.Curl() 		#Create pycurl instance 
-	c.setopt(c.URL, url) 	# URL
-	c.setopt(c.WRITEFUNCTION, ucStorage.write)  # write data into "ucStorage" data buffer using WRITEFUNCTION (Number of bytes written)
-	c.setopt(c.POST, 1)  # 1 - URL query parameters
-	print ('[x] buffer %s' %ImageRecPathh) 
-	send = [("file", (c.FORM_FILE,ImageRecPathh)),("timestamp",str(dt.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
-	c.setopt(c.HTTPPOST,send) 		   # POST "form data" on server
-	c.setopt(pycurl.CONNECTTIMEOUT, 1) # Timeout 1 second
-	
-# Try and Exception for Server Timeout 
+	#ucMediaType = "image"
 
 	try:
-		c.perform()
-		c.setopt(c.URL, url)
-		
-	except pycurl.error, error:
-		errno, errstr = error
-		gOut.writerow(['An error occurred', '%s' %errstr])
-		print 'An error occurred: ', errstr  # An error occured : Connection timed out after 1001 milliseconds
-		giTimeCount+=1
-		if giTimeCount >= DEFINE_INTERATION: # 3 times time out interation check then flag will be zero and will go in ideal state 
-				giTimeCount = 0
-				giFlag = 0
-		#Loop()
-    
-	c.close() 
-	
-	ucContent = ucStorage.getvalue() 	#Data collect in ucContent string from ucStorage buffer
-	print ('value %s' % ucContent)
-
-	j = json.loads(ucContent) 		# Decode json data
-
-# Server status maintain in Log file.
-	
-	if j['success'] == False:
-	 gOut.writerow(['Send Data on Server','Fail'])
-	 gOut.writerow(['value %s' % ucContent])
-	else:
-	 gOut.writerow(['Send Data on Server','Sucess'])
-	 gOut.writerow(['value %s' % ucContent])
- 
-# Try and Exception for Status of Server 
-	try:
-
 			if j['success'] == False:
 				raise ServerBusyError
 			else:
@@ -367,14 +338,88 @@ def SendData(ImageRecPathh):
 				giCount = 0
 				gOut.writerow(['Server Busy overflaw'])
 				giFlag = 0
-			#Loop()
-	giFlag = 0
-	lcd.clear()
-	lcd.message('Upload Sucessfully')
-	time.sleep(3)
-	lcd.clear()
-	lcd.message('Ready for')
-	lcd.message('\ntake a Picture')
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# @Function 	: SendData()
+# @ Parameter   : void
+# @ Return      : void
+# @ Brief       : This Function is Sending Form data on server 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
+def SendData(RecPath): 
+	global giCount
+	global giTimeCount
+	global giFlag
+	global ucContent
+	ucStorage = StringIO() 	#setup a "ucStorage" buffer in the form of a StringIO object 
+	c = pycurl.Curl() 		#Create pycurl instance 
+	c.setopt(c.URL, url) 	# URL
+	c.setopt(c.WRITEFUNCTION, ucStorage.write)  # write data into "ucStorage" data buffer using WRITEFUNCTION (Number of bytes written)
+	c.setopt(c.POST, 1)  # 1 - URL query parameters
+	print ('[x] buffer %s' %RecPath) 
+	send = [("file", (c.FORM_FILE,RecPath)),("timestamp",str(dt.now())),] # Sending Camera generated file and timestamp in the form of "Form data" formate
+	c.setopt(c.HTTPPOST,send) 		   # POST "form data" on server
+	c.setopt(pycurl.CONNECTTIMEOUT, 1) # Timeout 1 second
+	
+# Try and Exception for Server Timeout 
+
+	try:
+		c.perform()
+		c.setopt(c.URL, url)
+	except pycurl.error, error:
+		errno, errstr = error
+		gOut.writerow(['Timeout error occurred', '%s' %errstr])
+		print 'Timeout error occurred: ', errstr  # An error occured : Connection timed out after 1001 milliseconds
+		giTimeCount+=1
+		if giTimeCount >= DEFINE_INTERATION: # 3 times time out interation check then flag will be zero and will go in ideal state 
+				giTimeCount = 0
+				giFlag = 0
+		#Loop()
+    
+	c.close() 
+	
+	ucContent = ucStorage.getvalue() 	#Data collect in ucContent string from ucStorage buffer
+	print ('value %s' % ucContent)
+	try:
+		j = json.loads(ucContent) 		# Decode json data
+	except ValueError, e:
+            print ('Json Error : %s'%e)
+
+	
+	if j['success'] == False:
+	 gOut.writerow([DATE_TIME,'Send Data on Server','Fail'])
+	 gOut.writerow(['value %s' % ucContent])
+	else:
+	 gOut.writerow([DATE_TIME,'Send Data on Server','Sucess'])
+	 gOut.writerow(['value %s' % ucContent])
+ 
+# Try and Exception for Status of Server 
+	try:
+
+			if j['success'] == False:
+				raise ServerBusyError
+			else:
+				gOut.writerow([DATE_TIME,'Server is Healthy'])
+
+	except ServerBusyError:
+			gOut.writerow(['Server Busy'])
+			giCount+=1
+			print ('Server Busy')
+			print ('count %s' %giCount)
+			if giCount >= DEFINE_INTERATION:
+				giCount = 0
+				gOut.writerow([DATE_TIME,'Server Busy overflaw'])
+				giFlag = 0
+				lcd.clear()
+				lcd.message('Server is Busy...')
+
+	if ucMediaType == "image" and j['success'] == True:
+		lcd.clear()
+		lcd.message('Upload Sucessful\n***Thank you***')
+		time.sleep(2)
+		lcd.clear()
+		lcd.message('Ready to take\nPicture')
+	else:
+		lcd.message('Server is Busy')
+	gOut.writerow([DATE_TIME,'Door Position','Close'])
 				 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: CaptureVideo()
@@ -385,19 +430,24 @@ def SendData(ImageRecPathh):
 def CaptureVideo():		
 			global giFlag
 			global giVidCount
-			global MediaType
+			global ucMediaType
 			global VideoLength
 			global giOpenFlag
 			gCamera.annotate_text = ('Rydot infotech Attendance System_'+DATE_TIME)
-			gCamera.brightness = 50
-			gCamera.resolution = (1024, 768) 
-			gCamera.framerate = 30
+			gCamera.brightness = BRIGHTNESS
+			gCamera.resolution = (RESOLUTION_H, RESOLUTION_W) 
+			gCamera.framerate = VIDEO_FRAMERATE
 			gOut.writerow([DATE_TIME,'Video_Recording_Start'])
 			gCamera.start_recording(abs_path+'Raw_Video/video%s.h264' %giVidCount)
 			gOut.writerow([DATE_TIME,'Raw .h264 file generated'])
-			if wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1 and giOpenFlag == 1:  
-				VideoLengthLimit(VideoLength)
-	
+			# if giOpenFlag == 1:  
+			# 	VideoLengthLimit(VideoLength)
+			while wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1:  
+			    	VideoLengthLimit(VideoLength)
+				if giOpenFlag == 0:
+					break
+					gCamera.wait_recording()
+
 			gCamera.stop_recording()
 			gOut.writerow([DATE_TIME,'Video_Recording_Stop'])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -408,8 +458,8 @@ def CaptureVideo():
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		 
 def CaptureImage():
 			global count
-			gCamera.framerate = 15
-			gCamera.resolution = (1024, 768) 
+			gCamera.framerate = IMAGE_FRAMERATE
+			gCamera.resolution = (RESOLUTION_H, RESOLUTION_W) 
 			gCamera.annotate_text = ('Rydot infotech Attendance System_'+DATE_TIME)
 			gCamera.capture(abs_path+'Image/image%s.jpg'% count)
 			gOut.writerow([DATE_TIME,'Capture_Image','Success'])
@@ -457,12 +507,12 @@ def MessageQueueReceiveFile():
 			ImageRecPath = body
 			VideoRecPath = body
 			print(" [x] data %r" % ImageRecPath) 
-			if DEFINE_MODE == 0:
+			if ucMediaType == "image":
 				SendData(ImageRecPath) # Send data on server
-			if DEFINE_MODE == 1:
+			if ucMediaType == "moving":
 				gOut.writerow([DATE_TIME,'MessageQueue: ReceiveFilePath','%s' %VideoRecPath])
 				os.system('MP4Box -fps 30 -add '+VideoRecPath+' outfile.mp4') # raw.h264 to .mp4 Conversion
-				time.sleep(1)
+				#time.sleep(1)
 				os.system('cp outfile.mp4 MP4_Video/VID_%d.mp4' %giVidCount) # Copy current outfile.mp4 to number of VID_(n).mp4 
 				gOut.writerow([DATE_TIME,'MP4 File Generated','MP4_Video/VID_%d.mp4' %giVidCount])
 				VideoTimeDuration() #This Function will call for check Video time duration.
@@ -484,13 +534,14 @@ def MessageQueueReceiveFile():
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~	
 def DoorEventInterrupt():
 	global giFlag
+	global giOpenFlag
 	giFlag = 1
 	giOpenFlag = 1
 	gOut.writerow([DATE_TIME,'Interrupt Event Occured'])
 	print ('In ISR')
 	time.sleep(1)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Loop()
+# @Function 	: VideoLoop()
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : Function will monitor Door position and capture Video and 
@@ -498,25 +549,33 @@ def DoorEventInterrupt():
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def VideoLoop():
 	while True:  
-            
 			print wiringpi.digitalRead(READ_SWITCH)
 			time.sleep(0.2)	
 			global giFlag
 			global giCount
 			global giVidCount
-			#print ('flag %s' %giFlag)
+			global giOpenFlag
+			print ('video_Mode')
+			print ('flag %s' %giFlag)
 			#print ('count %s' %giCount)				
+			print ('giOpenFlag %s' %giOpenFlag)
 			print ('giVidCount %s' %giVidCount)
-			if wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1:   
+			lcd.clear()
+			lcd.message('Rydot Info. Ltd.\n%s'%(str(dt.now())))
+			if wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1 and giOpenFlag == 1:   
 					gOut.writerow([DATE_TIME,'Door Position','Open'])
 					print ('OPEN')
 					CaptureVideo()
 					MessageQueueSendFile(abs_path+'Raw_Video/video%s.h264'% (giVidCount))
-			else:
-				print ('CLOSE')
-				gOut.writerow([DATE_TIME,'Door Position','Close'])
+					giFlag = 0
+					giOpenFlag = 0
+			elif wiringpi.digitalRead(READ_SWITCH) == 1:
+					giFlag = 0
+					giOpenFlag = 0
+				# print ('CLOSE')
+			# 	gOut.writerow([DATE_TIME,'Door Position','Close'])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# @Function 	: Loop()
+# @Function 	: ImageLoop()
 # @ Parameter   : void
 # @ Return      : void
 # @ Brief       : Function will monitor Door position and capture Image and 
@@ -530,6 +589,7 @@ def ImageLoop():
 			global giVidCount
 			print wiringpi.digitalRead(READ_SWITCH)
 			time.sleep(0.2)	
+			print ('Image_Mode')
 			print ('flag %s' %giFlag)
 			print ('count %s' %giCount)
 			print ('giVidCount %s' %giVidCount)				
@@ -537,7 +597,7 @@ def ImageLoop():
 			if giFlag == 1:   
 				for giInteration in range(ENTRY_IMAGES):
 					gOut.writerow([DATE_TIME,'Door Position','Open'])
-					time.sleep(0.2)	
+					#time.sleep(0.2)	
 					CaptureImage()
 					MessageQueueSendFile(abs_path+'Image/image%s.jpg' % (giVidCount-1))
 					print ('Loop %s' %giInteration)	
@@ -553,9 +613,9 @@ def ImageLoop():
 def DoorEventThread():
 	while True:
 		print("In thread1")
-		if DEFINE_MODE == 0:
+		if ucMediaType == "image":
 			ImageLoop()	
-		if DEFINE_MODE == 1:
+		if ucMediaType == "moving":
 			VideoLoop()
 		if giKillFlag == 1:
 			break
