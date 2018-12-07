@@ -60,3 +60,14 @@ Default video fps : 25
 | Video   | 1024 x 768 | 30 | Good (4MB , 5 sec) |
 | Video   | 1024 x 768 | 90 | Frame rate exceed |
 | Video   | 1024 x 768  | 50 | Bad(6MB , 5sec) |
+
+
+Localhost Server for testing 
+----
+
+````
+$ python -m SimpleHTTPServer 8000
+````
+Using above command you can start localhost server for testing.
+
+

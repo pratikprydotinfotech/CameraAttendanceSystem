@@ -78,18 +78,23 @@ ucContent = " "
 
 global VideoLength
 VideoLength = 8
-global ucMediaType
 
 global giSkipJson
 giSkipJson = 0
 
-ucMediaType = "image" # Default MediaType is "image" 
+global ucMediaType # Default MediaType is "image" 
+ucMediaType = "image"
+
+global giPendingFlag 
+giPendingFlag = 0
 
 PendingImages = { }
 abs_path = os.getcwd()
 abs_path = abs_path+'/'
 
-#Url for data transfering on server 
+#Url for data transfering on server
+
+#url = ('http://0.0.0.0:%s' %(sys.argv[1])) # testing server
 url = "http://192.168.0.4:3000/upload"
 register_url = 'http://192.168.0.4:9128/api/ams/public/devices/register'
 configuration_url = 'http://192.168.0.4:9128/api/ams/public/devices/get-configuration'
@@ -112,11 +117,11 @@ IMAGE_FRAMERATE = 15
 IMAGE_DIR_PATH = abs_path+"Image"
 LOG_DIR_PATH = abs_path+"Test_Log" # Log directory generation path
 MP4_DIR_PATH = abs_path+"MP4_Video" # Output .mp4 file generation path
-LOG_FILE_PATH = abs_path+"Test_Log/log.csv" #log.csv file generation path
+LOG_FILE_PATH = abs_path+("Test_Log/log_%s.csv" %(str(dt.now()))) #log.csv file generation path
 RAW_DIR_PATH = abs_path+'Raw_Video' # Raw .h264 file generation path
 WIFI_FILE_PATH = '$(echo $(pwd)/Test_Log/WifiNetLog.csv)' # WifiConnectivity log file path
 MP4_FILE_PATH = (abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)
-DATE_TIME = ('%s' %(str(dt.now())))
+
 TIMEOUT_SEC = 1 # Server Time out e.g 1 Sec  
 
 
@@ -212,10 +217,10 @@ def Setup():
 	global READ_SWITCH 
 	global ucMediaType
 	LogFileGeneration() # Generate Log and Raw file Video Directory
-	gOut.writerow([DATE_TIME,'Setup Function Intialize'])
+	gOut.writerow([('%s' %(str(dt.now()))),'Setup Function Intialize'])
 	wiringpi.wiringPiSetupGpio() # Initialize wiring GPIO
 	LCDInit()   
-	GetConfiguration() # Get VideoLength duration and MediaType : Image/Video
+	#GetConfiguration() # Get VideoLength duration and MediaType : Image/Video
 	if ucMediaType == "image": # For Image
 		giFlag = 0
 		READ_SWITCH = 21
@@ -250,15 +255,15 @@ def VideoTimeDuration():
 	gfDurationBuf = int(h) * 3600 + int(m) * 60 + float(s)
 
 	print(gfDurationBuf)
-	gOut.writerow([DATE_TIME,'Time_Duration',gfDurationBuf])
+	gOut.writerow([('%s' %(str(dt.now()))),'Time_Duration',gfDurationBuf])
 	if gfDurationBuf <= 1.0:
 		os.system('rm -rf MP4_Video/VID_%d.mp4' %giVidCount)
-		gOut.writerow([DATE_TIME,'Discard_Video','MP4_Video/VID_%d.mp4' %giVidCount])
+		gOut.writerow([('%s' %(str(dt.now()))),'Discard_Video','MP4_Video/VID_%d.mp4' %giVidCount])
 		os.system('rm -rf outfile.mp4')
 	else:
 		SendData(abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)
 		os.system('rm -rf outfile.mp4')
-		gOut.writerow([DATE_TIME,'Store_Video','MP4_Video/VID_%d.mp4' %giVidCount])
+		gOut.writerow([('%s' %(str(dt.now()))),'Store_Video','MP4_Video/VID_%d.mp4' %giVidCount])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: VideoLengthLimit(seconds)
 # @ Parameter 	: Seconds
@@ -266,13 +271,13 @@ def VideoTimeDuration():
 # @ Brief 		: Record Video as per provide senconds in parameter
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def VideoLengthLimit(seconds):
-	gOut.writerow([DATE_TIME,'VideoRecording Play',seconds])
+	gOut.writerow([('%s' %(str(dt.now()))),'VideoRecording Play',(seconds-1)])
 	global gCamera
 	global giOpenFlag
 	start = time.time()
 	time.clock()
 	elapsed = 0
-	while elapsed < seconds and (wiringpi.digitalRead(READ_SWITCH) == 0):
+	while elapsed < (seconds-1) and (wiringpi.digitalRead(READ_SWITCH) == 0):
 		elapsed = time.time() - start
 		gCamera.wait_recording()
 		time.sleep(1)
@@ -288,7 +293,7 @@ def GetConfiguration():
 	global ucMediaType
 	global giSkipJson
 	global ucContent
-	gOut.writerow([DATE_TIME,'Enter in GetConfiguration'])
+	gOut.writerow([('%s' %(str(dt.now()))),'Enter in GetConfiguration'])
 
 	SerialNumber = GetCpuId()
 	ApiKey = "key-de0bd007143f9e4fb9b628d52fb084f741f"
@@ -338,7 +343,7 @@ def GetConfiguration():
 				if j['success'] == False:
 					raise ServerBusyError
 				else:
-					gOut.writerow([DATE_TIME,'Server is Healthy'])
+					gOut.writerow([('%s' %(str(dt.now()))),'Server is Healthy'])
 
 		except ServerBusyError:
 				gOut.writerow(['Server Busy'])
@@ -357,14 +362,14 @@ def GetConfiguration():
 		video_length = tuple(jsonnn_tree.execute('$..videoLength'))
 		Image_Type = tuple(jsonnn_tree.execute('$..imageType'))
 
-		ucMediaType = "image"
+		#ucMediaType = "image"
 
 		for VideoLength in video_length:
 			print(VideoLength)
-			gOut.writerow([DATE_TIME,'VideoLength','%d' %VideoLength])
+			gOut.writerow([('%s' %(str(dt.now()))),'VideoLength','%d' %VideoLength])
 		for ucMediaType in Image_Type:
 			print(ucMediaType)
-			gOut.writerow([DATE_TIME,'MediaType','%s' %ucMediaType])
+			gOut.writerow([('%s' %(str(dt.now()))),'MediaType','%s' %ucMediaType])
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: SendData()
@@ -378,7 +383,7 @@ def SendData(RecPath):
 	global giFlag
 	global ucContent
 	global giSkipJson
-
+	global giPendingFlag
 	ucStorage = StringIO() 	#setup a "ucStorage" buffer in the form of a StringIO object 
 	c = pycurl.Curl() 		#Create pycurl instance 
 	c.setopt(c.URL, url) 	# URL
@@ -396,7 +401,7 @@ def SendData(RecPath):
 		c.setopt(c.URL, url)
 	except pycurl.error, error:
 		errno, errstr = error
-		gOut.writerow([DATE_TIME,'Timeout error occurred', '%s' %errstr])
+		gOut.writerow([('%s' %(str(dt.now()))),'Timeout error occurred', '%s' %errstr])
 		print 'Timeout error occurred: ', errstr  # An error occured : Connection timed out after 1001 milliseconds
 		giSkipJson = 1
 		giTimeCount+=1
@@ -411,14 +416,15 @@ def SendData(RecPath):
 	print ('value %s' % ucContent)
 
 	if giSkipJson == 0:
+		giPendingFlag = 0
 		lcd.clear()
 		j = json.loads(ucContent) 		# Decode json data
 		
 		if j['success'] == False:
-			gOut.writerow([DATE_TIME,'Send Data on Server','Fail'])
+			gOut.writerow([('%s' %(str(dt.now()))),'Send Data on Server','Fail'])
 			gOut.writerow(['value %s' % ucContent])
 		else:
-			gOut.writerow([DATE_TIME,'Send Data on Server','Sucess'])
+			gOut.writerow([('%s' %(str(dt.now()))),'Send Data on Server','Sucess'])
 			gOut.writerow(['value %s' % ucContent])
 	
 	# Try and Exception for Status of Server 
@@ -427,7 +433,7 @@ def SendData(RecPath):
 				if j['success'] == False:
 					raise ServerBusyError
 				else:
-					gOut.writerow([DATE_TIME,'Server is Healthy'])
+					gOut.writerow([('%s' %(str(dt.now()))),'Server is Healthy'])
 
 		except ServerBusyError:
 				gOut.writerow(['Server Busy'])
@@ -436,7 +442,7 @@ def SendData(RecPath):
 				print ('count %s' %giCount)
 				if giCount >= DEFINE_INTERATION:
 					giCount = 0
-					gOut.writerow([DATE_TIME,'Server Busy overflaw'])
+					gOut.writerow([('%s' %(str(dt.now()))),'Server Busy overflaw'])
 					giFlag = 0
 					lcd.clear()
 					lcd.message('Server is Busy...')
@@ -450,13 +456,14 @@ def SendData(RecPath):
 
 	elif giSkipJson == 1:
 		print 'Pending Images Data'
-		PendingImages[giVidCount-1] = RecPath #ucUnstoreImagePath
-		gOut.writerow([DATE_TIME,'Pending Image Stored',PendingImages[giVidCount-1]])
+		giPendingFlag = 1
+		PendingImages[giVidCount-1] = RecPath 
+		gOut.writerow([('%s' %(str(dt.now()))),'Pending Image Stored',PendingImages[giVidCount-1]])
 	# for i in range(giVidCount):
 	# 	print ('\n %s' %PendingImages[i])
 	# 	print ("Array_Size:%d"%(len(PendingImages)))
 
-	gOut.writerow([DATE_TIME,'Door Position','Close'])
+	gOut.writerow([('%s' %(str(dt.now()))),'SendData Function Finish'])
 				 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: CaptureVideo()
@@ -470,23 +477,23 @@ def CaptureVideo():
 			global ucMediaType
 			global VideoLength
 			global giOpenFlag
-			gCamera.annotate_text = ('Rydot infotech Attendance System_'+DATE_TIME)
+			gCamera.annotate_text = ('Rydot infotech Attendance System_'+('%s' %(str(dt.now()))))
 			gCamera.brightness = BRIGHTNESS
 			gCamera.resolution = (RESOLUTION_H, RESOLUTION_W) 
 			gCamera.framerate = VIDEO_FRAMERATE
-			gOut.writerow([DATE_TIME,'Video_Recording_Start'])
+			gOut.writerow([('%s' %(str(dt.now()))),'Video_Recording_Start'])
 			gCamera.start_recording(abs_path+'Raw_Video/video%s.h264' %giVidCount)
-			gOut.writerow([DATE_TIME,'Raw .h264 file generated'])
+			gOut.writerow([('%s' %(str(dt.now()))),'Raw .h264 file generated'])
 			# if giOpenFlag == 1:  
 			# 	VideoLengthLimit(VideoLength)
 			while wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1:  
 			    	VideoLengthLimit(VideoLength)
 				if giOpenFlag == 0:
 					break
-					gCamera.wait_recording()
+					#gCamera.wait_recording()
 
 			gCamera.stop_recording()
-			gOut.writerow([DATE_TIME,'Video_Recording_Stop'])
+			gOut.writerow([('%s' %(str(dt.now()))),'Video_Recording_Stop'])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: CaptureImage
 # @ Parameter   : void
@@ -497,10 +504,10 @@ def CaptureImage():
 			global count
 			gCamera.framerate = IMAGE_FRAMERATE
 			gCamera.resolution = (RESOLUTION_H, RESOLUTION_W) 
-			gCamera.annotate_text = ('Rydot infotech Attendance System_'+DATE_TIME)
+			gCamera.annotate_text = ('Rydot infotech Attendance System_'+('%s' %(str(dt.now()))))
 			gCamera.capture(abs_path+'Image/image%s.jpg'% count)
-			gOut.writerow([DATE_TIME,'Capture_Image','Success'])
-			gOut.writerow([DATE_TIME,'Capture_Image_path',abs_path+'Image/image%s.jpg'% count]) 
+			gOut.writerow([('%s' %(str(dt.now()))),'Capture_Image','Success'])
+			gOut.writerow([('%s' %(str(dt.now()))),'Capture_Image_path',abs_path+'Image/image%s.jpg'% count]) 
 			count+=1
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: MessageQueueSendFile()
@@ -512,7 +519,7 @@ def CaptureImage():
 def MessageQueueSendFile(MQSendPath):
 	global InputFile
 	global giVidCount
-	print ('MsgQueue_Send_Count:%d'% giVidCount)
+	print ('MsgQueue_Send_Count>>>>>>:%d'% giVidCount)
 	InputFile = (MQSendPath) #Raw file video(n).h264 path
 
 	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
@@ -520,8 +527,8 @@ def MessageQueueSendFile(MQSendPath):
 	channel.queue_declare(queue='key%s'% (giVidCount-1)) # Generate Key(n)	
 	channel.basic_publish(exchange='', routing_key='key%s'% (giVidCount-1), body=InputFile) #Send body as a video(n).h264 file path
 	print('[x] Sent_path : %s' %(InputFile))
-	print('[x] Key:%s' %(giVidCount-1))
-	gOut.writerow([DATE_TIME,'MessageQueue: SendFilePath','%s' %InputFile])
+	print('[x] Sending Key:%s' %(giVidCount-1))
+	gOut.writerow([('%s' %(str(dt.now()))),'MessageQueue: SendFilePath','%s' %InputFile])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: MessageQueueReceiveFile
 # @ Parameter   : void
@@ -533,7 +540,7 @@ def MessageQueueReceiveFile():
 	global giVidCount
 	global ImageRecPath
 	global VideoRecPath
-	print ('MsgQueue_Rec_Count:%d'% giVidCount)
+	print ('MsgQueue_Rec_Count@@@@@@:%d'% giVidCount)
 	connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 	channel = connection.channel()
 	channel.queue_declare(queue=('key%s' %giVidCount))
@@ -546,18 +553,19 @@ def MessageQueueReceiveFile():
 			print(" [x] data %r" % ImageRecPath) 
 			if ucMediaType == "image":
 				SendData(ImageRecPath) # Send data on server
+				gOut.writerow([('%s' %(str(dt.now()))),'MessageQueue: ReceiveFilePath','%s' %ImageRecPath])
 			if ucMediaType == "moving":
-				gOut.writerow([DATE_TIME,'MessageQueue: ReceiveFilePath','%s' %VideoRecPath])
+				gOut.writerow([('%s' %(str(dt.now()))),'MessageQueue: ReceiveFilePath','%s' %VideoRecPath])
 				os.system('MP4Box -fps 30 -add '+VideoRecPath+' outfile.mp4') # raw.h264 to .mp4 Conversion
 				#time.sleep(1)
 				os.system('cp outfile.mp4 MP4_Video/VID_%d.mp4' %giVidCount) # Copy current outfile.mp4 to number of VID_(n).mp4 
-				gOut.writerow([DATE_TIME,'MP4 File Generated','MP4_Video/VID_%d.mp4' %giVidCount])
+				gOut.writerow([('%s' %(str(dt.now()))),'MP4 File Generated','MP4_Video/VID_%d.mp4' %giVidCount])
 				VideoTimeDuration() #This Function will call for check Video time duration.
 
 	channel.basic_consume(callback,
                       queue=('key%s' %giVidCount),
                       no_ack=True)
-	print('[x] Key:%s' %(giVidCount))
+	print('[x] Receive Key:%s' %(giVidCount))
 	giVidCount+=1
 	time.sleep(0.2)
 	# os.system('rm outputimage.jpg')
@@ -575,7 +583,7 @@ def DoorEventInterrupt():
 	global giOpenFlag
 	giFlag = 1
 	giOpenFlag = 1
-	gOut.writerow([DATE_TIME,'Interrupt Event Occured'])
+	gOut.writerow([('%s' %(str(dt.now()))),'Interrupt Event Occured'])
 	print ('In ISR')
 	time.sleep(1)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -586,7 +594,7 @@ def DoorEventInterrupt():
 #				  send video path using MessageQueueSendFile()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def VideoLoop():
-	while True:  
+	#while True:  
 			print wiringpi.digitalRead(READ_SWITCH)
 			time.sleep(0.2)	
 			global giFlag
@@ -594,14 +602,13 @@ def VideoLoop():
 			global giVidCount
 			global giOpenFlag
 			print ('video_Mode')
-			print ('flag %s' %giFlag)
-			#print ('count %s' %giCount)				
+			print ('flag %s' %giFlag)			
 			print ('giOpenFlag %s' %giOpenFlag)
 			print ('giVidCount %s' %giVidCount)
 			lcd.clear()
 			lcd.message('Rydot Info. Ltd.\n%s'%(str(dt.now())))
 			if wiringpi.digitalRead(READ_SWITCH) == 0 and giFlag == 1 and giOpenFlag == 1:   
-					gOut.writerow([DATE_TIME,'Door Position','Open'])
+					gOut.writerow([('%s' %(str(dt.now()))),'Door Position','Open'])
 					print ('OPEN')
 					CaptureVideo()
 					MessageQueueSendFile(abs_path+'Raw_Video/video%s.h264'% (giVidCount))
@@ -629,19 +636,20 @@ def ImageLoop():
 			time.sleep(0.2)	
 			print ('Image_Mode')
 			print ('flag %s' %giFlag)
-			print ('count %s' %giCount)
-			print ('giVidCount %s' %giVidCount)				
+			#print ('count %s' %giCount)
+			print ('giVidCount %s' %giVidCount)
+			#print ('Argument : %s' %(sys.argv[1]))			
 			print ('In Loop')
 			if giFlag == 1:   
 				for giInteration in range(ENTRY_IMAGES):
-					gOut.writerow([DATE_TIME,'Door Position','Open'])
+					gOut.writerow([('%s' %(str(dt.now()))),'Door Position','Open'])
 					#time.sleep(0.2)	
 					CaptureImage()
 					MessageQueueSendFile(abs_path+'Image/image%s.jpg' % (giVidCount-1))
 					print ('Loop %s' %giInteration)	
 					if giInteration <= (ENTRY_IMAGES - 1):
 						giFlag = 0
-						gOut.writerow([DATE_TIME,'Door Position','Close'])
+						gOut.writerow([('%s' %(str(dt.now()))),'Door Position','Close'])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: DoorEventThread()
 # @ Parameter   : void
@@ -672,14 +680,14 @@ def UploadThread():
 
 def InitThread():
 	#Create Threads 
-	gOut.writerow([DATE_TIME,'Create threads'])
+	gOut.writerow([('%s' %(str(dt.now()))),'Create threads'])
 	t1 = threading.Thread(target=UploadThread, args=())	
 	t2 = threading.Thread(target=DoorEventThread, args=())
 	#Start DoorEventThread
-	gOut.writerow([DATE_TIME,'Start Upload Thread'])
+	gOut.writerow([('%s' %(str(dt.now()))),'Start Upload Thread'])
 	t1.start()
 	#Start ImageUploadThread
-	gOut.writerow([DATE_TIME,'Start DoorEvent Thread']) 
+	gOut.writerow([('%s' %(str(dt.now()))),'Start DoorEvent Thread']) 
 	t2.start()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: main()
@@ -695,11 +703,14 @@ if __name__ == '__main__':
 	while True:
 		#time.sleep(1)
 		subprocess.call(['./wifi_check.sh'])
-		if (len(PendingImages)) > 0 and (giSkipJson == 0):
+		if (len(PendingImages)) > 0 and giPendingFlag == 0:
 			for i in range(len(PendingImages)):
 				SendData(PendingImages[i])
-				gOut.writerow([DATE_TIME,'Pending Image sent',PendingImages[i]])
+				print ('Pending Image Sent')
+				gOut.writerow([('%s' %(str(dt.now()))),'Pending Image sent',PendingImages[i]])
 			if i == ((len(PendingImages))-1):
+				lcd.clear()
+				lcd.message("Pending Images\nUpload Sucesful")
 				PendingImages = { }
 		if killer.kill_now:
 			giKillFlag=1
@@ -708,7 +719,7 @@ if __name__ == '__main__':
 	iPid = os.getpid()
 	os.system('kill -9 %s' %iPid)
 
-	gOut.writerow([DATE_TIME,'Terminate Process by Signal'])
+	gOut.writerow([('%s' %(str(dt.now()))),'Terminate Process by Signal'])
 	# wait until DoorEventThread is completely executed 
 	t1.join()
 	# wait until ImageUploadThread is completely executed
