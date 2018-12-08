@@ -1,10 +1,10 @@
 #-------------------------------------------------------------------------------------------------------------------------------------
-#File Name 		   : test_vid.py 
+#File Name 		   : test_vid_img_lcd.py 
 #Author(s) 		   : Pratik Panchal
-#Purpose of module : Attendance system provide some features like Record Video when door will open,
-# 					 process on video and video will upload on server. 
+#Purpose of module : Attendance System provide two different modes choice (i) Image capturing for attendance 
+#					 (ii) Video recording for In and Out. Both choice purely depend on Configuration URL.  					 
 #Date of creation  : 22/11/2018
-#Last Modification : 30/11/2018
+#Last Modification : 08/12/2018
 #-------------------------------------------------------------------------------------------------------------------------------------
 import threading, signal
 import pika
@@ -83,7 +83,7 @@ global giSkipJson
 giSkipJson = 0
 
 global ucMediaType # Default MediaType is "image" 
-ucMediaType = "image"
+ucMediaType = "moving"
 
 global giPendingFlag 
 giPendingFlag = 0
@@ -123,8 +123,6 @@ WIFI_FILE_PATH = '$(echo $(pwd)/Test_Log/WifiNetLog.csv)' # WifiConnectivity log
 MP4_FILE_PATH = (abs_path+'MP4_Video/VID_%s.mp4' %giVidCount)
 
 TIMEOUT_SEC = 1 # Server Time out e.g 1 Sec  
-
-
 
 # define user-defined exceptions for Server Busy
 class Error(Exception):
@@ -426,7 +424,7 @@ def SendData(RecPath):
 		else:
 			gOut.writerow([('%s' %(str(dt.now()))),'Send Data on Server','Sucess'])
 			gOut.writerow(['value %s' % ucContent])
-	
+
 	# Try and Exception for Status of Server 
 		try:
 
@@ -502,13 +500,15 @@ def CaptureVideo():
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		 
 def CaptureImage():
 			global count
+			print ('Camera giVidcount %d' %giVidCount)
+			print ('Camera count %d' %count)
 			gCamera.framerate = IMAGE_FRAMERATE
 			gCamera.resolution = (RESOLUTION_H, RESOLUTION_W) 
 			gCamera.annotate_text = ('Rydot infotech Attendance System_'+('%s' %(str(dt.now()))))
-			gCamera.capture(abs_path+'Image/image%s.jpg'% count)
+			gCamera.capture(abs_path+'Image/image%s.jpg'% (giVidCount-1))
 			gOut.writerow([('%s' %(str(dt.now()))),'Capture_Image','Success'])
-			gOut.writerow([('%s' %(str(dt.now()))),'Capture_Image_path',abs_path+'Image/image%s.jpg'% count]) 
-			count+=1
+			gOut.writerow([('%s' %(str(dt.now()))),'Capture_Image_path',abs_path+'Image/image%s.jpg'% (giVidCount-1)]) 
+			#count+=1
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # @Function 	: MessageQueueSendFile()
 # @ Parameter   : void
@@ -705,7 +705,7 @@ if __name__ == '__main__':
 		subprocess.call(['./wifi_check.sh'])
 		if (len(PendingImages)) > 0 and giPendingFlag == 0:
 			for i in range(len(PendingImages)):
-				SendData(PendingImages[i])
+				#SendData(PendingImages[i])
 				print ('Pending Image Sent')
 				gOut.writerow([('%s' %(str(dt.now()))),'Pending Image sent',PendingImages[i]])
 			if i == ((len(PendingImages))-1):
